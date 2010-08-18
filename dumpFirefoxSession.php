@@ -10,7 +10,7 @@
    *
    **********************************************
    * $HeadURL$
-   * $LastChangedRev$
+   * $LastChangedRevision$
    **********************************************
    * Dependencies:
    *  PHP5 with JSON
