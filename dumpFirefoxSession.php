@@ -7,13 +7,17 @@
    *  modifications are sent back to me and this notice is kept intact, and the changelog is updated.
    **********************************************
    * Canonical URL to current version:
-   *
+   *    <http://svn.jasonantman.com/misc-scripts/dumpFirefoxSession.php>
    **********************************************
    * $HeadURL$
    * $LastChangedRevision$
    **********************************************
    * Dependencies:
    *  PHP5 with JSON
+   **********************************************
+   * TESTED FOR:
+   *  Firefox 3.5.7 on OpenSuSE 11.1 x86_64
+   *
    **********************************************
    * CHANGELOG:
    *
