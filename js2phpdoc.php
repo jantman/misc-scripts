@@ -11,6 +11,9 @@
  * The canonical source of the latest version of this script is:
  *  <http://svn.jasonantman.com/misc-scripts/js2phpdoc.php>
  *
+ * Information on usage and installation can be found at:
+ *  <http://blog.jasonantman.com/2010/08/documentation-generation-for-web-apps-php-and-javascript/>
+ *
  * INSTALLATION:
  * In order for this to work with PHPdoc nicely, you need to edit your PHPdocumentor default.ini (on my system, at /usr/share/php5/PEAR/data/PhpDocumentor/phpDocumentor.ini),
  *  and add a line with "js" to the [_phpDocumentor_phpfile_exts] section, to get PHPDocumentor to parse .js files as PHP.
