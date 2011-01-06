@@ -45,6 +45,9 @@ people with access to the self-serve page are "trusted" users. Be careful here
 - when a user adds a MAC address, the AP will reload config and then
 restart. It would be bad to let someone just sit there clicking the button...
 
+3) The AP will only handle 32 MACs. If you give it an array longer than that,
+it will only add the first 32 to the config.
+
 =====USAGE====
 Be sure to change the global variables at the top of updateAPconfigs.php.inc
 to suit your environment. You must already have pubkey-based SSH
