@@ -3,6 +3,25 @@
 -- Host: localhost    Database: wireless
 -- ------------------------------------------------------
 -- Server version	5.0.26-log
+-- ------------------------------------------------------
+-- SQL schema for updateAPconfigs.php.inc database
+-- Functions for working with MAC authentication in Ubiquiti Networks AirOS v2 configs.
+--
+-- Copyright 2010, 2011 Jason Antman, All Rights Reserved.
+--
+-- These functions may be used for any purpose provided that:
+-- 1) This copyright notice is kept intact.
+-- 2) You send back to me any changes/modifications/bugfixes that you make.
+-- 3) This may not be included in commercial software which is sold for a fee, unless you discuss this with me first.
+--
+-- @author Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+--
+-- Announcement post: <http://blog.jasonantman.com/2011/01/managing-ubiquiti-networks-mac-acls-from-a-script/>
+--
+-- The canonical current version of this script lives at:
+-- $HeadURL$
+-- $LastChangedRevision$
+--
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;

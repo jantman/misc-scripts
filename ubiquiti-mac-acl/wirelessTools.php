@@ -1,18 +1,37 @@
 <?php
+/**
+ * wirelessTools.php
+ * Example script for usage of updateAPconfigs.php.inc
+ *
+ * Copyright 2010, 2011 Jason Antman, All Rights Reserved.
+ *
+ * These functions may be used for any purpose provided that:
+ * 1) This copyright notice is kept intact.
+ * 2) You send back to me any changes/modifications/bugfixes that you make.
+ * 3) This may not be included in commercial software which is sold for a fee, unless you discuss this with me first.
+ *
+ * @author Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+ *
+ * Announcement post: <http://blog.jasonantman.com/2011/01/managing-ubiquiti-networks-mac-acls-from-a-script/>
+ *
+ * The canonical current version of this script lives at:
+ * $HeadURL$
+ * $LastChangedRevision$
+ */
+
+#
+# LDAP configuration
+#
 $basedn = "dc=foo,dc=com"; // the top DN for everything
-$dbName = "pcr"; // MySQL DB name
+$dbName = "pcr"; // MySQL DB name for roster stuff
 $bindDN = "cn=Administrator,dc=foo,dc=com";
 $bindPass = "pass";
 $userSearchBaseDN = "cn=DesktopUsers,ou=groups,dc=foo,dc=com";
 $topdn = "ou=users,dc=foo,dc=com";
-$debug = true;
-$wireless_dbName = "wireless";
+$debug = true; // show debugging output?
+$file_path = "/tmp/ap-configs/";
 
-$apHostnames = array("mpac-wap2");
-$file_path = "/var/lib/wwwrun/";
-$pubkey = "/var/lib/wwwrun/.ssh/id_dsa";
-$APusername = "ubnt";
-//$AP_DEBUG = true;
+$apHostnames = array("foo-wap2", "foo-wap3", "foo-wap1"); // hostnames of APs to push configuration out to
 
 ?>
 
@@ -32,7 +51,7 @@ $APusername = "ubnt";
 
 <p class="dateline">Your IP Address is: <?php echo $_SERVER['REMOTE_ADDR'];?></p>
 
-<p class="abstract">This page provides information on the wireless networks available at MPAC, how to connect your devices, and some helpful tools.</p>
+<p class="abstract">This page provides information on the wireless networks available at foo, how to connect your devices, and some helpful tools.</p>
 
 <h2>Contents:</h2>
 <ol>
@@ -121,10 +140,10 @@ if(isset($_POST['action']) && $_POST['action'] == "addMAC")
 
 <a name="details"><h2>Connection Infomation</h2></a>
 
-<p>MPAC has two separate networks available:</p>
+<p>FOO has two separate networks available:</p>
 <ul>
-<li><strong>MPAC-secure</strong>: This is a secured network using WPA2-Enterprise (WPA2-EAP). Your must be using a device which supports WAP2-EAP/WPA2-Enterprise (exact variant unknown). Some devices will require additional supplicant software. A few devices just don&#39;t support it - including most game consoles. To connect to MPAC-secure, simply authenticate using your normal username and password. If you don't know your username, you can look it up <a href="usernameLookup.php">here</a>.</li>
-<li><strong>MPAC</strong>: The MPAC network is secured using the simpler (and less secure) WPA2-PSL security mode. As such, it should only be used for basic web browsing, and should be considered vulnerable to interception or session hijacking. This access point will use either TKIP or AES/CCMP encryption (it chooses the strongest of the two that the client accepts). This network requires a pre-shared key to connect. <strong>The key is</strong> 07432mpacwap2mpac</li>
+<li>Blah</li>
+<li>blah</li>
 <li>All access points also have a MAC ACL ("MAC address block list/filter") enabled. Your device&#39;s MAC address must be explicitly allowed (see <a href="#tools">below</a>.
 </ul>
 
@@ -151,7 +170,6 @@ function checkAccess()
 {
     ldapSetup();
     global $ds, $bindDN, $bindPass, $dbName;
-    // check_user, user_type={username|EMTid|dn}
     if($_POST['user_type'] == "username" || $_POST['user_type'] == "EMTid")
     {
 	if($_POST['user_type'] == "username")
@@ -176,7 +194,7 @@ function checkAccess()
     {
 	$userDN = $_POST['check_user'];
     }
-    $foo = getGroupMembers($ds, "cn=WirelessUsers,ou=groups,dc=midlandparkambulance,dc=com");
+    $foo = getGroupMembers($ds, "cn=WirelessUsers,ou=groups,dc=foo,dc=com");
 
     echo '<div class="result">';
     echo '<p><strong>Result:</strong></p>';
