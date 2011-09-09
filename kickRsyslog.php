@@ -14,15 +14,6 @@
  *
  */
 
-/**
- ***************************************************************************
- * WARNING - WARNING - WARNING
- * This script is managed by Puppet and local changes will be overwritten!
- * $HeadURL$
- * $LastChangedRevision$
- ***************************************************************************
- */
-
 require_once('collectRsyslogInfo.php');
 
 $mail_to = array('jantman@oit.rutgers.edu');

@@ -1,38 +1,38 @@
 #!/usr/bin/php
 <?php
-   /**
-    ****************************************************************************************************
-    * Script to collect information on a crashed/hung rsyslogd process, and log it all somewhere.
-    *
-    * Copyright 2011 Jason Antman <jantman@oit.rutgers.edu> <jason@jasonantman.com>,
-    *  on behalf of the taxpayers of the State of New Jersey and/or the students of Rutgers University,
-    *  The State University of New Jersey.
-    *
-    * $HeadURL$
-    * $LastChangedRevision$
-    *
-    ****************************************************************************************************
-    * Usage:
-    * This script defines one function, collectRsyslogInfo(), that collects various information on
-    * the rsyslog process, and either outputs it to the filesystem, or returns it as a string (optionally
-    * formatted as simple HTML for email). 
-    *
-    * This function should be called from a PHP wrapper. We have two, used in the following ways:
-    * 1) investigateRsyslog.php, just runs this and saves the information. 
-    * 2) kickRsyslog.php runs via cron; if log files are >= X seconds old, it saves the information, sends mail,
-    *     and restarts rsyslog.
-    *
-    * CUSTOMIZATION:
-    * 1) be sure to look at everything between the "CONFIGURATION" comments.
-    * 2) Everything between "RUTGERS" comments is site-specific, and you should probably remove.
-    *
-    * WARNING: Be aware there's very little error checking in this script. Things like paths existing or being
-    *  writable are not checked. There's also very little checking of binary paths, so you should confirm that
-    *  everything works right before relying on this.
-    *
-    * DEPENDENCIES: timeout command or script (PATH_TIMEOUT). See example in svn.jasonantman.com/misc-scripts/
-    ****************************************************************************************************
-    */
+/**
+ ****************************************************************************************************
+ * Script to collect information on a crashed/hung rsyslogd process, and log it all somewhere.
+ *
+ * Copyright 2011 Jason Antman <jantman@oit.rutgers.edu> <jason@jasonantman.com>,
+ *  on behalf of the taxpayers of the State of New Jersey and/or the students of Rutgers University,
+ *  The State University of New Jersey.
+ *
+ * $HeadURL$
+ * $LastChangedRevision$
+ *
+ ****************************************************************************************************
+ * Usage:
+ * This script defines one function, collectRsyslogInfo(), that collects various information on
+ * the rsyslog process, and either outputs it to the filesystem, or returns it as a string (optionally
+ * formatted as simple HTML for email). 
+ *
+ * This function should be called from a PHP wrapper. We have two, used in the following ways:
+ * 1) investigateRsyslog.php, just runs this and saves the information. 
+ * 2) kickRsyslog.php runs via cron; if log files are >= X seconds old, it saves the information, sends mail,
+ *     and restarts rsyslog.
+ *
+ * CUSTOMIZATION:
+ * 1) be sure to look at everything between the "CONFIGURATION" comments.
+ * 2) Everything between "RUTGERS" comments is site-specific, and you should probably remove.
+ *
+ * WARNING: Be aware there's very little error checking in this script. Things like paths existing or being
+ *  writable are not checked. There's also very little checking of binary paths, so you should confirm that
+ *  everything works right before relying on this.
+ *
+ * DEPENDENCIES: timeout command or script (PATH_TIMEOUT). See example in svn.jasonantman.com/misc-scripts/
+ ****************************************************************************************************
+ */
 
 // CONFIGURATION
 define("AGE_CHECK_FILE", "/ramdisk/dhcpd.log"); // logfile whose age triggers rsyslog restart
