@@ -1,7 +1,0 @@
-This is just a test of migration to new SVN server. Delete if I forget about
-it.
-
-$HeadURL$
-$LastChangedRevision$
-
-foo.
