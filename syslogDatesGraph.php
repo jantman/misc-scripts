@@ -8,6 +8,8 @@
  * Written this way with the (perhaps invalid) assumptions that you have a minimal PHP installation on your syslog
  * host, and a full PHP installation with GD, etc. on another (web) server somewhere, better suited to the graphing.
  *
+ * DEPENDENCIES:
+ * - rrdtool
  ********************************************************************************************************************
  * Copyright 2011 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com> All Rights Reserved.
  *
@@ -48,17 +50,61 @@ $keys = array_keys($dates);
 $min = min($keys);
 $max = max($keys);
 
-for($i = $min; $i < ($max + 60); $i+=60)
-{
-  // loop through the values in 60-second intervals
-  if(isset($dates[$i]))
-    {
+doChart();
 
-    }
-  else
+function doChart()
+{
+  global $dates, $keys, $min, $max;
+
+  $rraMax = max($dates);
+  $num = ($max - $min) / 60;
+
+  runcmd("rrdtool create --start ".($min - 60)." --step 60 temp.rrd DS:lines:ABSOLUTE:60:0:$rraMax RRA:AVERAGE:0.5:1:$num") or die();
+
+  $count = 0;
+  for($i = $min; $i <= ($max + 60); $i+=60)
     {
-      // value is 0
+      // loop through the values in 60-second intervals
+      $count++;
+      if(isset($dates[$i]))
+	{
+	  //$dataSet->addPoint(new Point(date("Y-m-d H:i", $i), $dates[$i]));
+	  runcmd("rrdtool update temp.rrd $i:".$dates[$i]) or die();
+	}
+      else
+	{
+	  // value is 0
+	  //$dataSet->addPoint(new Point(date("Y-m-d H:i", $i), 0));
+	  runcmd("rrdtool update temp.rrd $i:0") or die();
+	}
     }
+
+  /*
+rrdtool graph --start -1d --title "css-radius-auth1 - Matching Log Lines Per Minute, Last 24h - ESS-LDAP bind timeout" -v "Lines Per Minute" -S 60 -w 1200 -h 300 \
+--x-grid MINUTE:30:HOUR:1:HOUR:2:0:%X \
+daily.png DEF:lines=temp.rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n'  COMMENT:'Light gray grid lines every 30 minutes, light red lines every two hours.'
+
+rrdtool graph --start -3d --title "css-radius-auth1 - Matching Log Lines Per Minute, Last 3d - ESS-LDAP bind timeout" -v "Lines Per Minute" -S 60 -w 1200 -h 300 \
+--x-grid HOUR:1:HOUR:4:HOUR:6:0:%X \
+threeDays.png DEF:lines=temp.rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n' COMMENT:'Light gray grid lines every hour, light red lines every four hours.'
+
+rrdtool graph --start -1w --title "css-radius-auth1 - Matching Log Lines Per Minute, Last 7d - ESS-LDAP bind timeout" -v "Lines Per Minute" -S 60 -w 1200 -h 300 \
+--x-grid HOUR:1:HOUR:4:HOUR:12:0:%X \
+weekly.png DEF:lines=temp.rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n' COMMENT:'Light gray grid lines every hour, light red lines every four hours.'
+
+*/
+
+
+  return "";
+}
+
+function runcmd($cmd)
+{
+  echo $cmd."\n";
+  exec($cmd, $output, $return);
+  if($return == 0){ return true;}
+  fwrite(STDERR, "Command '$cmd'\n\texited with status $return: ".implode("\n", $output)."\n");
+  return false;
 }
 
 ?>
