@@ -29,37 +29,57 @@
  ********************************************************************************************************************
  */
 
-if(! isset($argv[1]))
+array_shift($argv); // discard first argument (script name)
+
+if(! isset($argv[0]) || $argv[0] == "--help" || $argv[0] == "-h")
 {
-  die("USAGE: syslogDatesGraph.php <filename.ser>\n");
+  die("USAGE: syslogDatesGraph.php <filename.ser> - make RRD and graphs\n\tsyslogDatesGraph.php --rrd <filename.ser> - make RRD file only\n\tsyslogDatesGraph.php --graphs <filename.rrd> - make graphs from existing rrd");
 }
 
-$fname = trim($argv[1]);
+$fname = trim(array_shift($argv));
+if($fname == "--rrd" || $fname == "--graphs"){ $type = $fname; $fname = trim(array_shift($argv));} else { $type = "--all";}
+
 if(! file_exists($fname) || ! is_readable($fname)){ die("ERROR: File $fname does not exist or is not readable.\n");}
 
-$ser = file_get_contents($fname) or die("ERROR: Unable to read file contents.\n");
-$arr = unserialize($ser) or die("ERROR: Unable to unserialize string.\n");
+if($type == "--rrd" || $type == "--all")
+  {
+    $ser = file_get_contents($fname) or die("ERROR: Unable to read file contents.\n");
+    $arr = unserialize($ser) or die("ERROR: Unable to unserialize string.\n");
 
-$dates = $arr['dates'];
+    $dates = $arr['dates'];
 
-echo "Read in serialized data file... ".$arr['totalLines']." total log lines, ".$arr['failed']." failed to parse, ".count($dates)." distinct 1-minute intervals.\n";
+    echo "Read in serialized data file... ".$arr['totalLines']." total log lines, ".$arr['failed']." failed to parse, ".count($dates)." distinct 1-minute intervals.\n";
 
-ksort($dates);
+    ksort($dates);
 
-$keys = array_keys($dates);
-$min = min($keys);
-$max = max($keys);
+    $keys = array_keys($dates);
+    $min = min($keys);
+    $max = max($keys);
 
-doChart();
+    $fname = "syslog_".date("Ymd", $min)."_".date("Ymd", $max).".rrd";
 
-function doChart()
+    $fname = makeRRD($fname);
+
+    echo "Wrote RRD to $fname for ".date("Y-m-d H:i:s", $min)." to ".date("Y-m-d H:i:s", $max)."\n";
+  }
+
+if($type == "--all")
+  {
+    makeGraphs($fname, $min, $max);
+  }
+elseif($type == "--graphs")
+{
+  makeGraphs($fname);
+}
+
+function makeRRD($fname = "temp.rrd")
 {
   global $dates, $keys, $min, $max;
 
   $rraMax = max($dates);
   $num = ($max - $min) / 60;
 
-  runcmd("rrdtool create --start ".($min - 60)." --step 60 temp.rrd DS:lines:ABSOLUTE:60:0:$rraMax RRA:AVERAGE:0.5:1:$num") or die();
+  runcmd("rrdtool create --start ".($min - 60)." --step 60 $fname DS:lines:ABSOLUTE:60:0:$rraMax RRA:AVERAGE:0.5:1:$num") or die();
 
   $count = 0;
   for($i = $min; $i <= ($max + 60); $i+=60)
@@ -69,33 +89,39 @@ function doChart()
       if(isset($dates[$i]))
 	{
 	  //$dataSet->addPoint(new Point(date("Y-m-d H:i", $i), $dates[$i]));
-	  runcmd("rrdtool update temp.rrd $i:".$dates[$i]) or die();
+	  runcmd("rrdtool update $fname $i:".$dates[$i]) or die();
 	}
       else
 	{
 	  // value is 0
 	  //$dataSet->addPoint(new Point(date("Y-m-d H:i", $i), 0));
-	  runcmd("rrdtool update temp.rrd $i:0") or die();
+	  runcmd("rrdtool update $fname $i:0") or die();
 	}
     }
 
-  /*
-rrdtool graph --start -1d --title "css-radius-auth1 - Matching Log Lines Per Minute, Last 24h - ESS-LDAP bind timeout" -v "Lines Per Minute" -S 60 -w 1200 -h 300 \
---x-grid MINUTE:30:HOUR:1:HOUR:2:0:%X \
-daily.png DEF:lines=temp.rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n'  COMMENT:'Light gray grid lines every 30 minutes, light red lines every two hours.'
+  return $fname;
+}
 
-rrdtool graph --start -3d --title "css-radius-auth1 - Matching Log Lines Per Minute, Last 3d - ESS-LDAP bind timeout" -v "Lines Per Minute" -S 60 -w 1200 -h 300 \
---x-grid HOUR:1:HOUR:4:HOUR:6:0:%X \
-threeDays.png DEF:lines=temp.rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n' COMMENT:'Light gray grid lines every hour, light red lines every four hours.'
+function makeGraphs($rrd, $min_ts = 0, $max_ts = 0)
+{
+  echo "Making graphs from rrd file $rrd\n";
+  
+  $files = "";
+  if($min_ts != 0 && $max_ts != 0){ $fname_ext = "_".date("Ymd", $min_ts)."_".date("Ymd", $max_ts);} else { $fname_ext = "";}
+  runcmd("rrdtool graph --start -1d --title \"css-radius-auth1 - Matching Log Lines Per Minute, Last 24h - ESS-LDAP bind timeout\" -v \"Lines Per Minute\" -S 60 -w 1200 -h 300 --x-grid MINUTE:30:HOUR:1:HOUR:2:0:%X daily".$fname_ext.".png DEF:lines=$rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n'  COMMENT:'Light gray grid lines every 30 minutes, light red lines every two hours.'");
+  echo "Wrote daily graph to daily".$fname_ext.".png\n";
+  $files .= "daily".$fname_ext.".png ";
+  runcmd("rrdtool graph --start -3d --title \"css-radius-auth1 - Matching Log Lines Per Minute, Last 3d - ESS-LDAP bind timeout\" -v \"Lines Per Minute\" -S 60 -w 1200 -h 300 --x-grid HOUR:1:HOUR:4:HOUR:6:0:%X threeDays".$fname_ext.".png DEF:lines=$rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n' COMMENT:'Light gray grid lines every hour, light red lines every four hours.'");
+  echo "Wrote threeDay graph to threeDays".$fname_ext.".png\n";
+  $files .= "threeDays".$fname_ext.".png ";
+  runcmd("rrdtool graph --start -1w --title \"css-radius-auth1 - Matching Log Lines Per Minute, Last 7d - ESS-LDAP bind timeout\" -v \"Lines Per Minute\" -S 60 -w 1200 -h 300 --x-grid HOUR:1:HOUR:4:HOUR:12:0:%X weekly".$fname_ext.".png DEF:lines=$rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n' COMMENT:'Light gray grid lines every hour, light red lines every four hours.'");
+  echo "Wrote weekly graph to weekly".$fname_ext.".png\n";
+  $files .= "weekly".$fname_ext.".png ";
 
-rrdtool graph --start -1w --title "css-radius-auth1 - Matching Log Lines Per Minute, Last 7d - ESS-LDAP bind timeout" -v "Lines Per Minute" -S 60 -w 1200 -h 300 \
---x-grid HOUR:1:HOUR:4:HOUR:12:0:%X \
-weekly.png DEF:lines=temp.rrd:lines:AVERAGE CDEF:lpm=lines,60,* LINE1:lpm#ff0000:'Lines\n' COMMENT:'Light gray grid lines every hour, light red lines every four hours.'
+  runcmd("montage -geometry 1300x400 -tile 1x3 ".$files."combined".$fname_ext.".png");
+  
 
-*/
-
-
-  return "";
+  echo "Done.\n";
 }
 
 function runcmd($cmd)
