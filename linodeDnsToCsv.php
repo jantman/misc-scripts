@@ -35,7 +35,7 @@
    *
    */
 
-require_once("/var/www/linode_apikey.php"); // PHP file containing: define("API_KEY_LINODE", "myApiKeyHere");
+require_once("/var/www/linode_apikey.php"); // PHP file containing:   define("API_KEY_LINODE", "myApiKeyHere");
 require_once('Services/Linode.php');
 
 // get list of all domains
