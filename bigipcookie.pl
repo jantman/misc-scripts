@@ -51,7 +51,7 @@ use strict;
 use warnings;
 
 if ( $#ARGV < 0 ) {
-    print "USAGE: bigipcookie.pl <IP:port | cookie value>\n";
+    print "USAGE: bigipcookie.pl <node IP:port | cookie value>\n";
     exit 1;
 }
 
@@ -69,7 +69,7 @@ elsif ($ARGV[0] =~ m/^(\d+)\.(\d+)\.0000$/){
     print "$ip:$portDec\n";
 }
 else {
-    print "USAGE: bigipcookie.pl <IP:port | cookie value>\n";
+    print "USAGE: bigipcookie.pl <node IP:port | cookie value>\n";
     exit 1;
 }
 
