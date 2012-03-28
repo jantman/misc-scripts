@@ -19,7 +19,9 @@ pydot - <http://code.google.com/p/pydot/>
 USAGE:
 dot_find_cycles.py /path/to/file.dot
 
-The canonical source of this script is:
+The canonical source of this script can always be found from:
+<http://blog.jasonantman.com/2012/03/python-script-to-find-dependency-cycles-in-graphviz-dot-files/>
+
 $HeadURL$
 $LastChangedRevision$
 
