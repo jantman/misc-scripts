@@ -34,19 +34,25 @@ import sys
 from os import path, access, R_OK
 import networkx as nx
 
+def usage():
+    sys.stderr.write("dot_find_cycles.py by Jason Antman <http://blog.jasonantman.com>\n")
+    sys.stderr.write("  finds cycles in dot file graphs, such as those from Puppet\n\n")
+    sys.stderr.write("USAGE: dot_find_cycles.py /path/to/file.dot\n")
+
 def main():
 
     path = ""
     if (len(sys.argv) > 1):
         path = sys.argv[1]
     else:
-        sys.stderr.write("USAGE: dot_find_cycles.py /path/to/file.dot\n")
+        usage()
         sys.exit(1)
 
     try:
         fh = open(path)
     except IOError as e:
         sys.stderr.write("ERROR: could not read file " + path + "\n")
+        usage()
         sys.exit(1)
 
 
