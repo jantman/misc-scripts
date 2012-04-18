@@ -86,8 +86,8 @@ if ( ! $sPWD ) {
 }
 
 # if no port specified, cat on default
-if ( $sHost !~ /.+:\d+/ ) {
-    $sHost .= ":".$default_port;
+if ( $sVIP !~ /.+:\d+/ ) {
+    $sVIP .= ":".$default_port;
 }
 
 #----------------------------------------------------------------------------
