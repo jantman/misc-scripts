@@ -75,6 +75,10 @@ $result = GetOptions (
 pod2usage(1) if $sHelp;
 pod2usage(-exitstatus => 0, -verbose => 2) if $man;
 
+pod2usage("$0: Host must be specified.\n") unless $sHost;
+pod2usage("$0: Username must be specified.\n") unless $sUID;
+pod2usage("$0: VIP address must be specified.\n") unless $sVIP;
+
 if ( ! $sPWD ) {
     print "Enter password for $sUID\@$sHost: ";
     chomp($sPWD = <>);
