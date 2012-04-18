@@ -7,7 +7,7 @@
 #
 # The latest version of this script can always be found at:
 # $HeadURL$
-# This version is: $LastChangedVersion$
+# This version is: $LastChangedRevision$
 #
 # The post describing this script and giving updates can be found at:
 # <http://blog.jasonantman.com/?p=1129>
