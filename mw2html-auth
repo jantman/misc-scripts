@@ -12,11 +12,13 @@ Connelly Barnes 2005.  Public domain.
 Changelog:
 2010-10-25 Jason Antman <jason@jasonantman.com>:
 - modified to allow HTTP Authentication, but interactive
+2012-09-24 Jason Antman <jason@jasonantman.com>:
+- added interactive option to use cookies grabbed from browser for auth
 
 <http://barnesc.blogspot.com/2005/10/mw2html-export-mediawiki-to-static.html>
 """
 
-__version__ = '0.1.0.0'
+__version__ = '0.2.0.0'
 
 import re
 import sys
@@ -29,6 +31,8 @@ import urlparse
 import os, os.path
 import errno
 import sha
+import time
+import cookielib
 
 try:
   set
@@ -588,12 +592,29 @@ def run(config, out=sys.stdout):
   complete = set()
   pending  = set([config.rooturl])
 
-  password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
-  username = raw_input("Username: ")
-  password = raw_input("Password: ")
-  password_mgr.add_password(None, config.rooturl, username, password)
-  handler = urllib2.HTTPBasicAuthHandler(password_mgr)
-  opener = urllib2.build_opener(handler)
+  foo = raw_input("Use HTTP Basic Auth? [y|N]")
+  if foo == "y":
+    password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
+    username = raw_input("Username: ")
+    password = raw_input("Password: ")
+    password_mgr.add_password(None, config.rooturl, username, password)
+    handler = urllib2.HTTPBasicAuthHandler(password_mgr)
+    opener = urllib2.build_opener(handler)
+  else:
+    foo = raw_input("Use cookies from current session? [y|N]")
+    if foo == "y":
+      cj = cookielib.CookieJar()
+      bar = ["internal_wikidb_sys_Token", "internal_wikidb_sys_UserID", "internal_wikidb_sys_UserName", "internal_wikidb_sys__session"]
+      cookie_host = raw_input("Enter host value for cookies:")
+      cookie_path = raw_input("Enter path for cookies:")
+      for cookie_name in bar:
+        cookie_value = raw_input("Enter value for " + cookie_name + " cookie:")
+        cookie_isSecure = False
+        cookie_expiry = int(time.time()) + 86400 # hack - just set expiry 1 day from now
+        c = cookielib.Cookie(0, cookie_name, cookie_value, None, False, cookie_host, cookie_host.startswith('.'), cookie_host.startswith('.'), cookie_path, False, cookie_isSecure, cookie_expiry, cookie_expiry=="", None, None, {})
+        cj.set_cookie(c)
+        # end loop over cookies
+      opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
   opener.addheaders = [("User-Agent", "mw2html.jasonantman.com/mw2html-auth/urllib2")]
   urllib2.install_opener(opener)
 
