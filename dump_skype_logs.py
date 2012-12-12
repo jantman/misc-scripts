@@ -29,6 +29,7 @@ import codecs
 import datetime
 from math import log
 from datetime import timedelta 
+import re
 
 options, remainder = getopt.getopt(sys.argv[1:], 'f:o:v', ['file=', 'outdir=', 'verbose', ])
 
@@ -48,23 +49,6 @@ for opt, arg in options:
 
 # TODO: test that FILE exists
 
-conn = sqlite3.connect(FILE)
-if conn == None:
-    print "ERROR: could not connect to database file '" + FILE + "'."
-    sys.exit(1)
-
-conn.row_factory = sqlite3.Row
-cursor = conn.cursor()
-c2 = conn.cursor()
-c1 = conn.cursor()
-
-c1.execute("SELECT id,identity,type,displayname FROM Conversations")
-c1rows = c1.fetchall()
-
-FILES = []
-
-COLORS = ['FF0000', '0000FF', '00FF00', 'FFFF00', '00FFFF']
-
 #
 # Functions to format the various record types for output as html
 #
@@ -74,6 +58,9 @@ def set_contact_colors(skypename, CONTACT_COLORS):
     if skypename not in CONTACT_COLORS:
         CONTACT_COLORS[skypename] = COLORS[len(CONTACT_COLORS)]
     return CONTACT_COLORS
+
+def make_safe_filename(f):
+    return re.sub(r'[^A-Za-z0-9_]', '', f)
 
 """
 Human friendly file size
@@ -163,6 +150,23 @@ def format_call(a):
 #
 # End format functions
 #
+
+conn = sqlite3.connect(FILE)
+if conn == None:
+    print "ERROR: could not connect to database file '" + FILE + "'."
+    sys.exit(1)
+
+conn.row_factory = sqlite3.Row
+cursor = conn.cursor()
+c2 = conn.cursor()
+c1 = conn.cursor()
+
+c1.execute("SELECT id,identity,type,displayname FROM Conversations")
+c1rows = c1.fetchall()
+
+FILES = []
+
+COLORS = ['FF0000', '0000FF', '00FF00', 'FFFF00', '00FFFF']
 
 # loop over each conversation
 for c1row in c1rows:
@@ -269,7 +273,8 @@ for c1row in c1rows:
             sys.stderr.write("ERROR: invalid type for key " + str(key) + "\n")
 
     # ok, got all strings, start the output...
-    outfile = OUTDIR + str(conv_id) + ".html"
+    conv_identity_safe = make_safe_filename(conv_identity)
+    outfile = OUTDIR + str(conv_identity_safe) + ".html"
     FILES.append(outfile)
     fh = codecs.open(outfile, "w", "utf-8")
     fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
