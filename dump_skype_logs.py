@@ -19,6 +19,13 @@ TODO:
 - colors for names of people
 - colors for special message types
 
+- calls.id == videos.convo_id
+- participants.convo_id == conversations.id; participants.voice_status, video_status (cached???)
+- callmembers.videostatus, debuginfo, call_duration
+  - callmembers.call_db_id == calls.id
+- calls.duration, current_video_audience
+
+
 """
 
 import sqlite3
