@@ -15,11 +15,20 @@ Changelog:
 2012-11-15 Jason Antman <jason@jasonantman.com>:
   - initial version
 
+TODO:
+- colors for names of people
+- colors for special message types
+
 """
 
 import sqlite3
 import getopt
 import sys
+import os
+import codecs
+import datetime
+from math import log
+from datetime import timedelta 
 
 options, remainder = getopt.getopt(sys.argv[1:], 'f:o:v', ['file=', 'outdir=', 'verbose', ])
 
@@ -27,7 +36,7 @@ OUTDIR = "skypeout/"
 FILE = "main.db"
 
 if not os.path.exists(OUTDIR):
-    os.mkdirs(OUTDIR)
+    os.makedirs(OUTDIR)
 
 for opt, arg in options:
     if opt in ('-o', '--outdir'):
@@ -54,11 +63,115 @@ c1rows = c1.fetchall()
 
 FILES = []
 
+COLORS = ['FF0000', '0000FF', '00FF00', 'FFFF00', '00FFFF']
+
+#
+# Functions to format the various record types for output as html
+#
+
+def set_contact_colors(skypename, CONTACT_COLORS):
+    global COLORS
+    if skypename not in CONTACT_COLORS:
+        CONTACT_COLORS[skypename] = COLORS[len(CONTACT_COLORS)]
+    return CONTACT_COLORS
+
+"""
+Human friendly file size
+credit to joctee on StackOverflow: http://stackoverflow.com/a/10171475/211734
+"""
+def sizeof_fmt(num):
+    unit_list = zip(['B', 'kB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
+    if num > 1:
+        exponent = min(int(log(num, 1024)), len(unit_list) - 1)
+        quotient = float(num) / 1024**exponent
+        unit, num_decimals = unit_list[exponent]
+        format_string = '{:.%sf} {}' % (num_decimals)
+        return format_string.format(quotient, unit)
+    if num == 0:
+        return '0 bytes'
+    if num == 1:
+        return '1 byte'
+
+def format_timestamp(t):
+    return datetime.datetime.fromtimestamp(t).strftime('%H:%M:%S')
+
+def format_video(a):
+    s = "<li>"
+    s += "<strong>%s Video starting</strong>: " % format_timestamp(a['timestamp'])
+    s += "dimensions=%s, duration=%s id=%s" % (a['dimensions'], a['duration'], a['id'])
+    s += "</li>\n"
+    return s
+
+def format_message(a, color):
+    s = "<li>"
+    #s += "<strong>%s %s:</strong> " % (format_timestamp(a['timestamp']), a['from_dispname'])
+    s += "<strong>%s <span style=\"color: #%s;\">%s</span>:</strong> " % (format_timestamp(a['timestamp']), color, a['author'])
+    if a['msg_type'] == 61:
+        # regular message
+        if a['body'] is not None:
+            s += a['body']
+    elif a['msg_type'] == 50:
+        # contact request
+        s += " <strong>Contact Request:</strong> "
+        if a['body'] is not None:
+            s += a['body']
+    elif a['msg_type'] == 51:
+        # ignore. probably confirmation of contact added, or signed on, or something like that
+        return ""
+    elif a['msg_type'] == 39:
+        # call end, with duration, in <partlist> (participant list)
+        if a['body'] is not None:
+            s += a['body'].replace("<", "&lt;").replace(">", "&gt;")
+        s += "<em>(MESSAGE author=%s msg_type=%s id=%s)</em>" % (a['author'], a['msg_type'], a['id'])
+    elif a['msg_type'] == 68:
+        # ignore it, it's a file transfer summary message
+        return ""
+    else:
+        if a['body'] is not None:
+            s += a['body'].replace("<", "&lt;").replace(">", "&gt;")
+        s += "<em>(MESSAGE author=%s msg_type=%s id=%s)</em>" % (a['author'], a['msg_type'], a['id'])
+    s += "</li>\n"
+    return s
+
+def format_transfer(a):
+    s = "<li>"
+    s += "<strong>%s File Transfer</strong> " % format_timestamp(a['timestamp'])
+    if a['transfer_type'] == 1:
+        # incoming
+        s += "from "
+    else:
+        # outgoing
+        s += "to "
+    s += "%s. File <tt>%s</tt> (local path <tt>%s</tt>). %s transferred in %s. status=%s." % (a['partner'], a['filename'], a['filepath'], sizeof_fmt(float(a['filesize'])), timedelta(seconds=(a['finishtime'] - a['timestamp'])), a['status'])
+    s += "</li>\n"
+    return s
+
+def format_chat(a):
+    s = "<li>"
+    s += "<strong>%s Start Chat with %s</strong> " % (format_timestamp(a['timestamp']), a['partner'])
+    s += "</li>\n"
+    return s
+
+def format_call(a):
+    s = "<li>"
+    s += "<strong>%s %s Call</strong> " % (format_timestamp(a['timestamp']), ("Incoming" if a['is_incoming'] == 1 else "Outgoing"))
+    s += "%s %s" % (("from" if a['is_incoming'] == 1 else "to"), a['members'])
+    s += " <em>(host=%s duration=%s is_incoming=%s conv_dbid=%s video_audience=%s, id=%s)</em>" % (a['host'], a['duration'], a['is_incoming'], a['conv_dbid'], a['current_video_audience'], a['id'])
+    s += "</li>\n"
+    return s
+
+#
+# End format functions
+#
+
+# loop over each conversation
 for c1row in c1rows:
     conv_id = c1row['id']
     conv_identity = c1row['identity']
 
     EVENTS = {}
+
+    CONTACT_COLORS = {}
 
     # add chats to EVENTS dict
     cursor.execute("SELECT id, name, timestamp, dialog_partner, adder, participants FROM chats WHERE conv_dbid=" + str(conv_id) + " ORDER BY id ASC")
@@ -69,7 +182,7 @@ for c1row in c1rows:
         if row['timestamp'] in EVENTS:
             print "WARNING: timestamp " + str(row['timestamp']) + " for chat "+ str(row['id']) +" already in EVENTS dict."
         key = ( row['timestamp'] * 100 )
-        while not key in EVENTS:
+        while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
 
@@ -85,10 +198,10 @@ for c1row in c1rows:
         members = ""
         rows2 = c2.fetchall()
         for row2 in rows2:
-            members = "%s%s (start=%d duration=%d videostatus=%d" (members, row2['identity'], row2['start_timestamp'], row2['call_duration'], row2['videostatus'])
+            members = "%s%s (start=%s duration=%s videostatus=%s" % (members, row2['identity'], row2['start_timestamp'], row2['call_duration'], row2['videostatus'])
         foo['members'] = members
         key = ( row['begin_timestamp'] * 100 )
-        while not key in EVENTS:
+        while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
     
@@ -100,7 +213,7 @@ for c1row in c1rows:
         foo = {'type': 'message', 'timestamp': row['timestamp'], 'author': row['author'], 'from_dispname': row['from_dispname'], 'msg_type': row['type'], 'body': row['body_xml'], 'id': row['id']}
 
         key = ( row['timestamp'] * 100 )
-        while not key in EVENTS:
+        while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
 
@@ -112,7 +225,7 @@ for c1row in c1rows:
         foo = {'type': 'transfer', 'timestamp': row['starttime'], 'finishtime': row['finishtime'], 'transfer_type': row['type'], 'partner': row['partner_handle'], 'status': row['status'], 'filepath': row['filepath'], 'filename': row['filename'], 'filesize': row['filesize'], 'bytestx': row['bytestransferred'], 'id': row['id']}
 
         key = ( row['starttime'] * 100 )
-        while not key in EVENTS:
+        while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
 
@@ -124,7 +237,7 @@ for c1row in c1rows:
         foo = {'type': 'video', 'timestamp': row['timestamp'], 'dimensions': row['dimensions'], 'duration': (row['duration_hqv'] + row['duration_vgad2'] + row['duration_ltvgad2']), 'id': row['id']}
 
         key = ( row['timestamp'] * 100 )
-        while not key in EVENTS:
+        while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
 
@@ -132,29 +245,38 @@ for c1row in c1rows:
     toc_str = ""
     body_str = ""
 
+    cur_date = ""
+
     for key in sorted(EVENTS.iterkeys()):
+        foo = datetime.datetime.fromtimestamp(EVENTS[key]['timestamp']).strftime('%a %b %d %Y')
+        if foo != cur_date:
+            cur_date = foo
+            body_str += "<li><strong>%s</strong></li>" % cur_date
+
         if EVENTS[key]['type'] == "chat":
-            print "foo"
+            body_str += format_chat(EVENTS[key])
         elif EVENTS[key]['type'] == "call":
-            print "foo"
+            body_str += format_call(EVENTS[key])
         elif EVENTS[key]['type'] == "message":
-            print "foo"
+            CONTACT_COLORS = set_contact_colors(EVENTS[key]['author'], CONTACT_COLORS)
+            body_str += format_message(EVENTS[key], CONTACT_COLORS[EVENTS[key]['author']])
         elif EVENTS[key]['type'] == "transfer":
-            print "foo"
+            body_str += format_transfer(EVENTS[key])
         elif EVENTS[key]['type'] == "video":
-            print "foo"
+            body_str += format_video(EVENTS[key])
         else:
+            print "%s: %s" % (key, EVENTS[key]['type'])
             sys.stderr.write("ERROR: invalid type for key " + str(key) + "\n")
-        print "%s: %s" % (key, EVENTS[key]['type'])
 
     # ok, got all strings, start the output...
-    outfile = OUTDIR + conv_identity + ".html"
+    outfile = OUTDIR + str(conv_id) + ".html"
     FILES.append(outfile)
-    fh = open(outfile, "w")
+    fh = codecs.open(outfile, "w", "utf-8")
     fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
     fh.write(toc_str)
-    fh.write(body_str)
+    fh.write("<ul>\n" + body_str + "</ul>\n")
     fh.write("</body></html>")
+# env loop over conversations
 
 conn.close()
 
