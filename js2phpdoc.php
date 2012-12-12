@@ -4,7 +4,8 @@
 /**
  * Command line script to take comments and function prototypes from JS files and make them PHP-ish to be parsed by phpdoc.
  *
- * Reads all *.js files in a specified directory, extracts only comments and function definitions, writes them to same-named files in an output directory.
+ * Reads all *.js files in a specified directory, extracts only comments and function definitions, writes them to either 
+ * same-named files in an output directory (if specified), or otherwise to files ending in .js-php in the same directory.
  *
  * Copyright 2010 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
  *
@@ -16,10 +17,10 @@
  *
  * INSTALLATION:
  * In order for this to work with PHPdoc nicely, you need to edit your PHPdocumentor default.ini (on my system, at /usr/share/php5/PEAR/data/PhpDocumentor/phpDocumentor.ini),
- *  and add a line with "js" to the [_phpDocumentor_phpfile_exts] section, to get PHPDocumentor to parse .js files as PHP.
+ *  and add a line with "js" or "js-php" to the [_phpDocumentor_phpfile_exts] section, to get PHPDocumentor to parse .js or .js-php files as PHP.
  *
  * USAGE:
- *  js2phpdoc.php [--help] <input directory> <output directory>
+ *  js2phpdoc.php [--help] <input directory> [output directory]
  *
  * EXPECTATIONS:
  *  This script expects relatively strict formatting of source files, to work with phpdoc...
@@ -31,7 +32,7 @@
  *
  *
  * MAKEFILE:
- *  To generate documentation, assuming I'm in the project root directory, and I have PHP files I want to parse in the CWD and "inc/", and JS files in "js/", I use the following Makefile rule:
+ *  To generate documentation, assuming your CWD is the project root directory, and I have PHP files I want to parse in the CWD and "inc/", and JS files in "js/", I use the following Makefile rule:
  *  I also find it helpful to use different package names like "Project-PHP" and "Project-JS"
  *
  * using the temp/directory allows our converted JS files to not pollute the actual source code.
@@ -54,6 +55,7 @@
  *     2) Update the changelog below as appropriate.
  *
  * @author jantman <jason@jasonantman.com> <http://www.jasonantman.com>
+ * @author rhorber <raphael.horber@gmail.com>
  *
  * $LastChangedRevision$
  * $HeadURL$
@@ -62,6 +64,14 @@
  *
  * 2010-08-25 jantman:
  *  - initial version
+ *
+ * 2012-06-01 rhorber:
+ *  - added recursive file parsing
+ *  - changed output file extension to .js-php and put output in same path as input
+ *
+ * 2012-06-02 jantman:
+ *  - changed to use getopt() for better argument handling
+ *  - merged in rhorber's changes, updated documentation
  *
  * @package MPAC-NewCall-PHP
  */

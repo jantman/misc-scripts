@@ -23,8 +23,11 @@ import sys
 
 options, remainder = getopt.getopt(sys.argv[1:], 'f:o:v', ['file=', 'outdir=', 'verbose', ])
 
-OUTDIR = "skypeout"
+OUTDIR = "skypeout/"
 FILE = "main.db"
+
+if not os.path.exists(OUTDIR):
+    os.mkdirs(OUTDIR)
 
 for opt, arg in options:
     if opt in ('-o', '--outdir'):
@@ -35,12 +38,125 @@ for opt, arg in options:
         FILE = arg
 
 # TODO: test that FILE exists
-# TOOD: test that OUTDIR exists, else create
 
 conn = sqlite3.connect(FILE)
 if conn == None:
     print "ERROR: could not connect to database file '" + FILE + "'."
     sys.exit(1)
+
+conn.row_factory = sqlite3.Row
+cursor = conn.cursor()
+c2 = conn.cursor()
+c1 = conn.cursor()
+
+c1.execute("SELECT id,identity,type,displayname FROM Conversations")
+c1rows = c1.fetchall()
+
+FILES = []
+
+for c1row in c1rows:
+    conv_id = c1row['id']
+    conv_identity = c1row['identity']
+
+    EVENTS = {}
+
+    # add chats to EVENTS dict
+    cursor.execute("SELECT id, name, timestamp, dialog_partner, adder, participants FROM chats WHERE conv_dbid=" + str(conv_id) + " ORDER BY id ASC")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        foo = {'type': 'chat', 'timestamp': row['timestamp'], 'partner': row['dialog_partner'], 'id': row['id']}
+        if row['timestamp'] in EVENTS:
+            print "WARNING: timestamp " + str(row['timestamp']) + " for chat "+ str(row['id']) +" already in EVENTS dict."
+        key = ( row['timestamp'] * 100 )
+        while not key in EVENTS:
+            key = key + 1
+        EVENTS[key] = foo
+
+    # add calls to EVENTS dict
+    cursor.execute("SELECT id, begin_timestamp, host_identity, duration, name, is_incoming, conv_dbid, current_video_audience FROM calls WHERE conv_dbid=" + str(conv_id) + " ORDER BY id ASC")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        foo = {'type': 'call', 'timestamp': row['begin_timestamp'], 'host': row['host_identity'], 'duration': row['duration'], 'is_incoming': row['is_incoming'], 'conv_dbid': row['conv_dbid'], 'current_video_audience': row['current_video_audience'], 'id': row['id']}
+
+        # get data from callmembers
+        c2.execute("SELECT id,identity,dispname,call_duration,videostatus,guid,start_timestamp,call_db_id FROM callmembers WHERE call_db_id=" + str(row['id']))
+        members = ""
+        rows2 = c2.fetchall()
+        for row2 in rows2:
+            members = "%s%s (start=%d duration=%d videostatus=%d" (members, row2['identity'], row2['start_timestamp'], row2['call_duration'], row2['videostatus'])
+        foo['members'] = members
+        key = ( row['begin_timestamp'] * 100 )
+        while not key in EVENTS:
+            key = key + 1
+        EVENTS[key] = foo
+    
+    # add messages to EVENTS dict
+    cursor.execute("SELECT id, convo_id, chatname, author, from_dispname, dialog_partner, timestamp, type, sending_status, consumption_status, body_xml, participant_count, chatmsg_type, chatmsg_status, call_guid FROM messages WHERE convo_id=" + str(conv_id) + " ORDER BY id ASC")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        foo = {'type': 'message', 'timestamp': row['timestamp'], 'author': row['author'], 'from_dispname': row['from_dispname'], 'msg_type': row['type'], 'body': row['body_xml'], 'id': row['id']}
+
+        key = ( row['timestamp'] * 100 )
+        while not key in EVENTS:
+            key = key + 1
+        EVENTS[key] = foo
+
+    # add file transfers to EVENTS dict
+    cursor.execute("SELECT id, type, partner_handle, partner_dispname, status, starttime, finishtime, filepath, filename, filesize, bytestransferred FROM transfers WHERE convo_id=" + str(conv_id) + " ORDER BY id ASC")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        foo = {'type': 'transfer', 'timestamp': row['starttime'], 'finishtime': row['finishtime'], 'transfer_type': row['type'], 'partner': row['partner_handle'], 'status': row['status'], 'filepath': row['filepath'], 'filename': row['filename'], 'filesize': row['filesize'], 'bytestx': row['bytestransferred'], 'id': row['id']}
+
+        key = ( row['starttime'] * 100 )
+        while not key in EVENTS:
+            key = key + 1
+        EVENTS[key] = foo
+
+    # add videos to EVENTS dict
+    cursor.execute("SELECT id, dimensions, duration_hqv, duration_vgad2, duration_ltvgad2, timestamp, hq_present, convo_id FROM videos WHERE convo_id=" + str(conv_id) + " ORDER BY id ASC")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        foo = {'type': 'video', 'timestamp': row['timestamp'], 'dimensions': row['dimensions'], 'duration': (row['duration_hqv'] + row['duration_vgad2'] + row['duration_ltvgad2']), 'id': row['id']}
+
+        key = ( row['timestamp'] * 100 )
+        while not key in EVENTS:
+            key = key + 1
+        EVENTS[key] = foo
+
+    # make HTML body strings
+    toc_str = ""
+    body_str = ""
+
+    for key in sorted(EVENTS.iterkeys()):
+        if EVENTS[key]['type'] == "chat":
+            print "foo"
+        elif EVENTS[key]['type'] == "call":
+            print "foo"
+        elif EVENTS[key]['type'] == "message":
+            print "foo"
+        elif EVENTS[key]['type'] == "transfer":
+            print "foo"
+        elif EVENTS[key]['type'] == "video":
+            print "foo"
+        else:
+            sys.stderr.write("ERROR: invalid type for key " + str(key) + "\n")
+        print "%s: %s" % (key, EVENTS[key]['type'])
+
+    # ok, got all strings, start the output...
+    outfile = OUTDIR + conv_identity + ".html"
+    FILES.append(outfile)
+    fh = open(outfile, "w")
+    fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
+    fh.write(toc_str)
+    fh.write(body_str)
+    fh.write("</body></html>")
+
+conn.close()
 
 """
 
@@ -90,42 +206,3 @@ Loop through conversations - each conv_id
     Compare the timestamp of the first iteam in each array (calls, chats, messages, videos, transfers). Print the first one to the body. If it's not a message (i.e. it's a chat, call, video, or transfer) then put in an anchor as well and add it to the headers array.
 
 """
-
-conn.row_factory = sqlite3.Row
-cursor = conn.cursor()
-c2 = conn.cursor()
-
-EVENTS = {}
-CALLS = {}
-
-# add chats to EVENTS dict
-cursor.execute("SELECT id, name, timestamp, dialog_partner, adder, participants FROM chats ORDER BY id ASC")
-rows = cursor.fetchall()
-
-for row in rows:
-    foo = {'type': 'chat', 'timestamp': row['timestamp'], 'partner': row['dialog_partner'], 'id': row['id']}
-    if row['timestamp'] in EVENTS:
-        print "WARNING: timestamp " + str(row['timestamp']) + " for chat "+ str(row['id']) +" already in EVENTS dict."
-    EVENTS[row['timestamp']] = foo
-
-# add calls to EVENTS dict
-cursor.execute("SELECT id, begin_timestamp, host_identity, duration, name, is_incoming, conv_dbid, current_video_audience FROM calls ORDER BY id ASC")
-rows = cursor.fetchall()
-
-for row in rows:
-    foo = {'type': 'call', 'timestamp': row['begin_timestamp'], 'host': row['host_identity'], 'duration': row['duration'], 'is_incoming': row['is_incoming'], 'conv_dbid': row['conv_dbid'], 'current_video_audience': row['current_video_audience'], 'id': row['id']}
-
-    # get data from callmembers
-    c2.execute("SELECT id,identity,dispname,call_duration,videostatus,guid,start_timestamp,call_db_id
-
-    if row['begin_timestamp'] in EVENTS:
-        print "WARNING: timestamp " + str(row['begin_timestamp']) + " for call "+ str(row['id']) +" already in EVENTS dict."
-    EVENTS[row['begin_timestamp']] = foo
-    CALLS[row['begin_timestamp']] = foo
-
-conn.close()
-
-for key in sorted(EVENTS.iterkeys()):
-    print "%s: %s" % (key, EVENTS[key]['type'])
-
-#print EVENTS
