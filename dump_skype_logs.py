@@ -12,19 +12,11 @@ sqlite3
 getopt
 
 Changelog:
-2012-11-15 Jason Antman <jason@jasonantman.com>:
+2012-12-13 Jason Antman <jason@jasonantman.com>:
   - initial version
 
 TODO:
-- colors for names of people
-- colors for special message types
-
-- calls.id == videos.convo_id
-- participants.convo_id == conversations.id; participants.voice_status, video_status (cached???)
-- callmembers.videostatus, debuginfo, call_duration
-  - callmembers.call_db_id == calls.id
-- calls.duration, current_video_audience
-
+- colors for special message types ??
 
 """
 
@@ -37,6 +29,7 @@ import datetime
 from math import log
 from datetime import timedelta 
 import re
+from BeautifulSoup import BeautifulSoup
 
 options, remainder = getopt.getopt(sys.argv[1:], 'f:o:v', ['file=', 'outdir=', 'verbose', ])
 
@@ -96,9 +89,25 @@ def format_video(a):
     s += "</li>\n"
     return s
 
+def format_call_start_end(msg_type, body):
+	xml = BeautifulSoup(body)
+	if msg_type == 30:
+		s = "<strong>Start call</strong>, participants: "
+	else:
+		s = "<strong>End call</strong>, participants: "
+	for x in xml.partlist.findAll("part"):
+		if x.duration is not None and x["identity"] is not None:
+			s += "%s (%s) " % (x["identity"], timedelta(seconds=int(x.duration.string)))
+	return s
+
 def format_message(a, color):
     s = "<li>"
-    #s += "<strong>%s %s:</strong> " % (format_timestamp(a['timestamp']), a['from_dispname'])
+    if a['msg_type'] == 39 or a['msg_type'] == 30:
+        s += "<strong>%s</strong> " % (format_timestamp(a['timestamp']))
+        # call start or end, with duration, in <partlist> (participant list)
+        if a['body'] is not None:
+            s += format_call_start_end(a['msg_type'], a['body'])
+        return s
     s += "<strong>%s <span style=\"color: #%s;\">%s</span>:</strong> " % (format_timestamp(a['timestamp']), color, a['author'])
     if a['msg_type'] == 61:
         # regular message
@@ -112,11 +121,6 @@ def format_message(a, color):
     elif a['msg_type'] == 51:
         # ignore. probably confirmation of contact added, or signed on, or something like that
         return ""
-    elif a['msg_type'] == 39:
-        # call end, with duration, in <partlist> (participant list)
-        if a['body'] is not None:
-            s += a['body'].replace("<", "&lt;").replace(">", "&gt;")
-        s += "<em>(MESSAGE author=%s msg_type=%s id=%s)</em>" % (a['author'], a['msg_type'], a['id'])
     elif a['msg_type'] == 68:
         # ignore it, it's a file transfer summary message
         return ""
@@ -146,11 +150,31 @@ def format_chat(a):
     s += "</li>\n"
     return s
 
+def format_debuginfo(s, identity):
+    ret = ""
+    incoming = ""
+    foo = re.search('video send stream \d+ \(l\): ID: \d+, Type: \d+/\d+, Res: (\d+x\d+), Codec: ([^,]+), FPS ([^,]+),', s)
+    if foo is not None:
+        ret = "Outgoing Video %s, %s FPS. " % (foo.group(1), foo.group(3))
+    ptn = "%s's video recv:\s+Res: ([^,]+), Color: ([^,]+), FPS: ([^,]+)" % identity
+    foo = re.search(ptn, s)
+    if foo is not None:
+        ret += "Incoming Video %s, %s FPS." % (foo.group(1), foo.group(3))
+    return ret
+
 def format_call(a):
     s = "<li>"
     s += "<strong>%s %s Call</strong> " % (format_timestamp(a['timestamp']), ("Incoming" if a['is_incoming'] == 1 else "Outgoing"))
-    s += "%s %s" % (("from" if a['is_incoming'] == 1 else "to"), a['members'])
-    s += " <em>(host=%s duration=%s is_incoming=%s conv_dbid=%s video_audience=%s, id=%s)</em>" % (a['host'], a['duration'], a['is_incoming'], a['conv_dbid'], a['current_video_audience'], a['id'])
+    if not a['duration'] is None:
+        s += "(duration %s)" % timedelta(seconds=int(a['duration']))
+    s += " %s:" % (("from" if a['is_incoming'] == 1 else "to"))
+    for x in a['members']:
+        s += " %s" % a['members'][x]['identity']
+        if a['members'][x]['call_duration'] is not None:
+            s += " (call_duration %s" % timedelta(seconds= a['members'][x]['call_duration'])
+        if a['members'][x]['debuginfo'] is not None:
+            s += ", " + format_debuginfo(a['members'][x]['debuginfo'], a['members'][x]['identity'])
+        s += ")"
     s += "</li>\n"
     return s
 
@@ -202,15 +226,14 @@ for c1row in c1rows:
     rows = cursor.fetchall()
 
     for row in rows:
-        foo = {'type': 'call', 'timestamp': row['begin_timestamp'], 'host': row['host_identity'], 'duration': row['duration'], 'is_incoming': row['is_incoming'], 'conv_dbid': row['conv_dbid'], 'current_video_audience': row['current_video_audience'], 'id': row['id']}
+        foo = {'type': 'call', 'timestamp': row['begin_timestamp'], 'host': row['host_identity'], 'duration': row['duration'], 'is_incoming': row['is_incoming'], 'conv_dbid': row['conv_dbid'], 'current_video_audience': row['current_video_audience'], 'id': row['id'], 'members': {}}
 
         # get data from callmembers
-        c2.execute("SELECT id,identity,dispname,call_duration,videostatus,guid,start_timestamp,call_db_id FROM callmembers WHERE call_db_id=" + str(row['id']))
-        members = ""
+        c2.execute("SELECT id,identity,dispname,call_duration,videostatus,debuginfo,guid,start_timestamp,call_db_id FROM callmembers WHERE call_db_id=" + str(row['id']))
         rows2 = c2.fetchall()
+
         for row2 in rows2:
-            members = "%s%s (start=%s duration=%s videostatus=%s" % (members, row2['identity'], row2['start_timestamp'], row2['call_duration'], row2['videostatus'])
-        foo['members'] = members
+			foo['members'][row2['identity']] = row2
         key = ( row['begin_timestamp'] * 100 )
         while key in EVENTS:
             key = key + 1
@@ -322,21 +345,5 @@ id, begin_timestamp, host_identity, duration, name, is_incoming, start_timestamp
 <http://stephanietan.boldersecurity.com/2011/04/analyzing-skype-chat-and-call-logs.html>
 <http://kosi2801.freepgs.com/2009/12/03/messing_with_the_skype_40_database.html>
 <http://betrayedspousesclub.blogspot.com/2012/07/skype-maindb.html>
-
-so I want to mainly look at chats and calls, interleaving them, sorted by calls.begin_timestamp and chats.timestamp
-
- Calls ---> CallMembers
-
- Chats ---> ChatMembers
-
-                 -----> Messages
- Conversation --|-----> Videos
-                 -----> Transfers
-
-EDIT - NEW THEORY - 
-Loop through conversations - each conv_id
-  Build arrays of calls/callmembers, chats/chatmembers, messages, videos and transfers, ordered by id (which should also be by ts)
-  Start a HTML file body for the conversation, and a headers array
-    Compare the timestamp of the first iteam in each array (calls, chats, messages, videos, transfers). Print the first one to the body. If it's not a message (i.e. it's a chat, call, video, or transfer) then put in an anchor as well and add it to the headers array.
 
 """
