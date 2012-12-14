@@ -38,6 +38,8 @@ OUTDIR = "skypeout/"
 FILE = "main.db"
 DATE_FORMATS = {'message': '%H:%M:%S', 'filename': '%Y-%m-%d'}
 HIDE_DATES = True
+HIGHLIGHT_WORDS = ['highlight', 'words']
+HIGHLIGHT_COLOR = "#FFFF00"
 # END CONFIG
 
 if not os.path.exists(OUTDIR):
@@ -105,6 +107,13 @@ def format_call_start_end(msg_type, body):
 			s += "%s (%s) " % (x["identity"], timedelta(seconds=int(x.duration.string)))
 	return s
 
+def highlight_message(msg):
+    global HIGHLIGHT_WORDS, HIGHLIGHT_COLOR
+    m = " %s " % msg
+    for r in HIGHLIGHT_WORDS:
+        m = re.sub('\s+' + r + '\s+', ' <span style="background-color: ' + HIGHLIGHT_COLOR + ';">' + r + '</span> ', m, 0, re.I)
+    return m
+
 def format_message(a, color, key):
     s = "<li><a name=\"%s\"></a>" % key
     if a['msg_type'] == 39 or a['msg_type'] == 30:
@@ -117,7 +126,7 @@ def format_message(a, color, key):
     if a['msg_type'] == 61:
         # regular message
         if a['body'] is not None:
-            s += a['body']
+            s += highlight_message(a['body'])
     elif a['msg_type'] == 50:
         # contact request
         s += " <strong>Contact Request:</strong> "
