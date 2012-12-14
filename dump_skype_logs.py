@@ -328,7 +328,7 @@ for c1row in c1rows:
             cur_ts = EVENTS[key]['timestamp']
             cur_date = foo
             if HIDE_DATES is True:
-                body_str = "<li><strong>NEW DAY</strong></li>"
+                body_str = "<li><strong>BEGIN DAY %d</strong></li>" % (num_day_files+1)
             else:
                 body_str = "<li><strong>%s</strong></li>" % foo
             
