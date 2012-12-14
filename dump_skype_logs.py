@@ -110,23 +110,30 @@ def format_call_start_end(msg_type, body):
 def highlight_message(msg):
     global HIGHLIGHT_WORDS, HIGHLIGHT_COLOR
     m = " %s " % msg
+    m_hlt = m
     for r in HIGHLIGHT_WORDS:
-        m = re.sub('\s+' + r + '\s+', ' <span style="background-color: ' + HIGHLIGHT_COLOR + ';">' + r + '</span> ', m, 0, re.I)
-    return m
+        m_hlt = re.sub('\s+' + r + '\s+', ' <span style="background-color: ' + HIGHLIGHT_COLOR + ';">' + r + '</span> ', m_hlt, 0, re.I)
+    was_changed = False
+    if m_hlt != m:
+        was_changed = True
+    return (m_hlt, was_changed)
 
-def format_message(a, color, key):
-    s = "<li><a name=\"%s\"></a>" % key
+def format_message(a, color, key, cur_fname):
+    s = ""
+    grep_line = ""
+    was_highlight = False
     if a['msg_type'] == 39 or a['msg_type'] == 30:
         s += "<strong>%s</strong> " % (format_timestamp(a['timestamp']))
         # call start or end, with duration, in <partlist> (participant list)
         if a['body'] is not None:
             s += format_call_start_end(a['msg_type'], a['body'])
-        return s
+        return (s, "")
     s += "<strong>%s <span style=\"color: #%s;\">%s</span>:</strong> " % (format_timestamp(a['timestamp']), color, a['author'])
     if a['msg_type'] == 61:
         # regular message
         if a['body'] is not None:
-            s += highlight_message(a['body'])
+            (msg_str, was_highlight) = highlight_message(a['body'])
+            s += msg_str
     elif a['msg_type'] == 50:
         # contact request
         s += " <strong>Contact Request:</strong> "
@@ -134,16 +141,19 @@ def format_message(a, color, key):
             s += a['body']
     elif a['msg_type'] == 51:
         # ignore. probably confirmation of contact added, or signed on, or something like that
-        return ""
+        return ("", "")
     elif a['msg_type'] == 68:
         # ignore it, it's a file transfer summary message
-        return ""
+        return ("", "")
     else:
         if a['body'] is not None:
             s += a['body'].replace("<", "&lt;").replace(">", "&gt;")
         s += "<em>(MESSAGE author=%s msg_type=%s id=%s)</em>" % (a['author'], a['msg_type'], a['id'])
-    s += "</li>\n"
-    return s
+    final_s = "<li><a name=\"%s\"></a>%s</li>\n" % (key, s)
+    if was_highlight is True:
+        # format and return grep_line
+        grep_line = "<li><a href=\"%s#%s\">%s</a>: %s</li>\n" % (cur_fname, key, cur_fname, s)
+    return (final_s, grep_line)
 
 def format_transfer(a):
     s = "<li>"
@@ -300,6 +310,7 @@ for c1row in c1rows:
     toc_str = ""
     body_str = ""
     all_body_str = ""
+    grep_str = ""
 
     cur_ts = 0
     cur_date = ""
@@ -309,18 +320,20 @@ for c1row in c1rows:
 
     for key in sorted(EVENTS.iterkeys()):
         foo = datetime.datetime.fromtimestamp(EVENTS[key]['timestamp']).strftime('%a %b %d %Y')
+        if HIDE_DATES is True:
+            cur_day_fname = "%s_%03d.html" % (str(conv_identity_safe), num_day_files)
+        else:
+            filedate = datetime.datetime.fromtimestamp(cur_ts).strftime(DATE_FORMATS['filename'])
+            cur_day_fname = str(conv_identity_safe) + "_" + filedate + ".html"
+
         if foo != cur_date:
             # make the filename for the new file
-            if HIDE_DATES is True:
-                cur_day_fname = "%s_%03d.html" % (str(conv_identity_safe), num_day_files)
-            else:
-                filedate = datetime.datetime.fromtimestamp(cur_ts).strftime(DATE_FORMATS['filename'])
-                cur_day_fname = str(conv_identity_safe) + "_" + filedate + ".html"
             # done making filename
             if cur_ts != 0:
                 # write out the per-day file
                 all_body_str += body_str
                 num_day_files += 1
+                print "writing cur_day_fname=%s" % cur_day_fname
                 write_per_day_file(body_str, OUTDIR, cur_day_fname, conv_identity_safe, cur_date)
             cur_ts = EVENTS[key]['timestamp']
             cur_date = foo
@@ -336,7 +349,9 @@ for c1row in c1rows:
             body_str += format_call(EVENTS[key])
         elif EVENTS[key]['type'] == "message":
             CONTACT_COLORS = set_contact_colors(EVENTS[key]['author'], CONTACT_COLORS)
-            body_str += format_message(EVENTS[key], CONTACT_COLORS[EVENTS[key]['author']], key)
+            (msg_line, grep_line) = format_message(EVENTS[key], CONTACT_COLORS[EVENTS[key]['author']], key, cur_day_fname)
+            body_str += msg_line
+            grep_str += grep_line
         elif EVENTS[key]['type'] == "transfer":
             body_str += format_transfer(EVENTS[key])
         elif EVENTS[key]['type'] == "video":
@@ -352,6 +367,13 @@ for c1row in c1rows:
     fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
     fh.write(toc_str)
     fh.write("<ul>\n" + all_body_str + "</ul>\n")
+    fh.write("</body></html>")
+    fh.close
+
+    grepfile = OUTDIR + str(conv_identity_safe) + "-highlights.html"
+    fh = codecs.open(grepfile, "w", "utf-8")
+    fh.write("<html><head><title>Highlights in Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
+    fh.write("<ul>\n" + grep_str + "</ul>\n")
     fh.write("</body></html>")
     fh.close
 # env loop over conversations
