@@ -37,7 +37,7 @@ options, remainder = getopt.getopt(sys.argv[1:], 'f:o:v', ['file=', 'outdir=', '
 OUTDIR = "skypeout/"
 FILE = "main.db"
 DATE_FORMATS = {'message': '%H:%M:%S', 'filename': '%Y-%m-%d'}
-HIDE_DATES = True
+HIDE_DATES = False
 HIGHLIGHT_WORDS = ['highlight', 'words']
 HIGHLIGHT_COLOR = "#FFFF00"
 # END CONFIG
@@ -192,16 +192,8 @@ def format_call(a):
     s += "</li>\n"
     return s
 
-def write_per_day_file(s, timestamp, fname_base):
-    global DATE_FORMATS, HIDE_DATES
-    if HIDE_DATES is True:
-        # before 1/1/2000 00:00:00 GMT, so this is just a sequence number with time stripped out
-        filedate = str(timestamp)
-        outfile = "%s_%03d.html" % (fname_base, timestamp)
-    else:
-        filedate = datetime.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT['filename'])
-        outfile = fname_base + "_" + filedate + ".html"
-    fh = codecs.open(outfile, "w", "utf-8")
+def write_per_day_file(s, OUTDIR, fname, conv_identity, filedate):
+    fh = codecs.open((OUTDIR + fname), "w", "utf-8")
     fh.write("<html><head><title>Skype Conversation with " + conv_identity + " on " + filedate + "</title></head></html><body>\n")
     fh.write("<ul>\n" + body_str + "</ul>\n")
     fh.write("</body></html>")
@@ -311,20 +303,25 @@ for c1row in c1rows:
 
     cur_ts = 0
     cur_date = ""
+    cur_day_fname = ""
     conv_identity_safe = make_safe_filename(conv_identity)
     num_day_files = 0
 
     for key in sorted(EVENTS.iterkeys()):
         foo = datetime.datetime.fromtimestamp(EVENTS[key]['timestamp']).strftime('%a %b %d %Y')
         if foo != cur_date:
+            # make the filename for the new file
+            if HIDE_DATES is True:
+                cur_day_fname = "%s_%03d.html" % (str(conv_identity_safe), num_day_files)
+            else:
+                filedate = datetime.datetime.fromtimestamp(cur_ts).strftime(DATE_FORMATS['filename'])
+                cur_day_fname = str(conv_identity_safe) + "_" + filedate + ".html"
+            # done making filename
             if cur_ts != 0:
                 # write out the per-day file
                 all_body_str += body_str
                 num_day_files += 1
-                if HIDE_DATES is True:
-                    write_per_day_file(body_str, num_day_files, (OUTDIR + str(conv_identity_safe)))
-                else:
-                    write_per_day_file(body_str, cur_ts, (OUTDIR + str(conv_identity_safe)))
+                write_per_day_file(body_str, OUTDIR, cur_day_fname, conv_identity_safe, cur_date)
             cur_ts = EVENTS[key]['timestamp']
             cur_date = foo
             if HIDE_DATES is True:
@@ -349,7 +346,7 @@ for c1row in c1rows:
             sys.stderr.write("ERROR: invalid type for key " + str(key) + "\n")
 
     # ok, got all strings, start the output...
-    outfile = OUTDIR + str(conv_identity_safe) + "_all.html"
+    outfile = OUTDIR + str(conv_identity_safe) + "-all.html"
     FILES.append(outfile)
     fh = codecs.open(outfile, "w", "utf-8")
     fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
