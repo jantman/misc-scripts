@@ -170,7 +170,7 @@ def format_debuginfo(s, identity):
     foo = re.search('video send stream \d+ \(l\): ID: \d+, Type: \d+/\d+, Res: (\d+x\d+), Codec: ([^,]+), FPS ([^,]+),', s)
     if foo is not None:
         ret = "Outgoing Video %s, %s FPS. " % (foo.group(1), foo.group(3))
-    ptn = "%s's video recv:\s+Res: ([^,]+), Color: ([^,]+), FPS: ([^,]+)" % identity
+    ptn = "%s's video recv:\s+Res: ([^,]+), Color: ([^,]+), FPS: ([^,]+)" % re.escape(identity)
     foo = re.search(ptn, s)
     if foo is not None:
         ret += "Incoming Video %s, %s FPS." % (foo.group(1), foo.group(3))
