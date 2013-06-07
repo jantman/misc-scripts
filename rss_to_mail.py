@@ -40,52 +40,44 @@ import shelve
 #import feedparser
 
 import logging
-logger = logging.getLogger(__name__)
-ch = logging.StreamHandler()
-formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
-
 
 PROG_DIR="~/.rsstomail"
 CONFIG_EXAMPLE_URL="https://raw.github.com/jantman/misc-scripts/master/rss_to_mail_config.py"
-DEBUG = False
-VERBOSE = False
 DRY_RUN = False
 
 def do_config_setup():
     """
     Sets up the configuration/save directory (PROG_DIR) and initializes an example config file, if not present.
     """
-    logger.debug("entering do_config_setup()")
+    logging.debug("entering do_config_setup()")
     if not os.path.exists(PROG_DIR):
-        logger.info("PROG_DIR does not exist, creating it now")
+        logging.info("PROG_DIR does not exist, creating it now")
         try:
             os.makedirs(PROG_DIR)
         except:
-            logger.critical("could not create program directory at %s", PROG_DIR)
+            logging.critical("could not create program directory at %s", PROG_DIR)
             sys.exit(1)
     if not os.path.exists("%s/config.py" % PROG_DIR):
-        logger.debug("config file does not exist at %s/config.py", PROG_DIR)
+        logging.debug("config file does not exist at %s/config.py", PROG_DIR)
         if not os.path.exists("%s/config.py.example" % PROG_DIR):
-            logger.debug("example config does not exist at %s/config.py.example, downloading it", PROG_DIR)
+            logging.debug("example config does not exist at %s/config.py.example, downloading it", PROG_DIR)
             # need to pre-seed the example config file
             try:
-                logger.debug("getting %s", CONFIG_EXAMPLE_URL)
+                logging.debug("getting %s", CONFIG_EXAMPLE_URL)
                 u = urllib2.urlopen(CONFIG_EXAMPLE_URL)
                 content = u.read()
             except:
-                logger.critical("could not download example config file from %s", CONFIG_EXAMPLE_URL)
+                logging.critical("could not download example config file from %s", CONFIG_EXAMPLE_URL)
                 sys.exit(1)
             try:
                 f = open("%s/config.py.example" % PROG_DIR, 'w')
                 f.write(content)
                 f.close()
             except:
-                logger.critical("could not write example config file to %s/config.py.example", PROG_DIR)
+                logging.critical("could not write example config file to %s/config.py.example", PROG_DIR)
                 sys.exit(1)
-        logger.critical("Example configuration file exists at %s/config.py.example", PROG_DIR)
-        logger.critical("Please edit example config file and copy to %s/config.py", PROG_DIR)
+        logging.critical("Example configuration file exists at %s/config.py.example", PROG_DIR)
+        logging.critical("Please edit example config file and copy to %s/config.py", PROG_DIR)
         sys.exit(1)
 
 def check_one_feed(name, url, title_regex = None, body_regex = None):
@@ -116,7 +108,7 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
         logging.debug("feedcache.fetch(%s)", url)
         parsed_data = fc.fetch(url)
     except:
-        logger.error("unable to fetch/cache feed '%s' from %s", name, url)
+        logging.error("unable to fetch/cache feed '%s' from %s", name, url)
         storage.close()
         return []
 
@@ -132,11 +124,11 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
             pf = open(SEEN_PICKLE_FILE, 'r')
             seen_ids = pickle.load(pf)
             pf.close()
-            logger.debug("loaded %i seen_ids from pickle file" % len(seen_ids))
+            logging.debug("loaded %i seen_ids from pickle file" % len(seen_ids))
         except:
-            logger.error("unable to load seen_ids from pickle file %s", SEEN_PICKLE_FILE)
+            logging.error("unable to load seen_ids from pickle file %s", SEEN_PICKLE_FILE)
     else:
-        logger.debug("no existing pickle file for seen_ids for feed '%s', creating empty list", name)
+        logging.debug("no existing pickle file for seen_ids for feed '%s', creating empty list", name)
         seen_ids = []
 
     matching_entries = [] # store the entries that match, return then when we're done
@@ -156,14 +148,17 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
         pf = open(SEEN_PICKLE_FILE, 'w')
         pickle.dump(seen_ids, pf)
         pf.close()
-        logger.debug("wrote seen_ids to pickle file %s", SEEN_PICKLE_FILE)
+        logging.debug("wrote seen_ids to pickle file %s", SEEN_PICKLE_FILE)
     except:
-        logger.error("could not write seen_ids to pickle file for feed '%s'", name)
+        logging.error("could not write seen_ids to pickle file for feed '%s'", name)
 
     return matching_entries
 
-def check_feeds():
+def check_feeds(FEEDS, EMAIL_TO):
     """
+    :param FEEDS: FEEDS dict from config file
+    :param EMAIL_TO: EMAIL_TO list from config file
+
     Main function to handle checking all of the feeds and sending mail on anything new.
     """
     
@@ -175,7 +170,8 @@ def check_feeds():
         foo = check_one_feed(feed, FEEDS[feed]['url'], FEEDS[feed]['title_regex'], FEEDS[feed]['body_regex'])
 
 
-if __name__ == '__main__':
+def main():
+    global DEBUG, PROG_DIR, VERBOSE
     cmd_parser = OptionParser(version="%prog",description="RSS to Email Script", usage="%prog [options]")
     cmd_parser.add_option("-d", "--dir", type="string", action="store", dest="dir", default="~/.rsstomail", help="Program config/save directort (default: ~/.rsstomail")
     cmd_parser.add_option("-r", "--dry-run", action="store_true", dest="dryrun", default=False, help="Dry run - don't send mail, just show what would be sent on STDOUT")
@@ -183,33 +179,34 @@ if __name__ == '__main__':
     cmd_parser.add_option("-D", "--debug", action="store_true", dest="debug", default=False, help="debug-level output of internal logic")
     (cmd_options, cmd_args) = cmd_parser.parse_args()
 
+    log_level = logging.WARNING
     if cmd_options.debug and cmd_options.debug is True:
-        DEBUG = cmd_options.debug
-        logger.setLevel(logging.DEBUG)
+        log_level = logging.DEBUG
     elif cmd_options.verbose and cmd_options.verbose is True:
-        VERBOSE = cmd_options.verbose
-        logger.setLevel(logging.INFO)
-    else:
-        logger.setLevel(logging.WARNING)
+        log_level = logging.INFO
+    logging.basicConfig(level=log_level, format   = '%(asctime)s %(levelname)s %(name)s %(message)s', datefmt  = '%H:%M:%S')
 
     if cmd_options.dryrun and cmd_options.dryrun is True:
         DRY_RUN = cmd_options.dryrun
-        logger.warning("setting DRY_RUN to True, will not send mail")
+        logging.warning("setting DRY_RUN to True, will not send mail")
 
     if cmd_options.dir:
         PROG_DIR = os.path.expanduser(cmd_options.dir)
-        logger.info("Setting PROG_DIR to '%s'", PROG_DIR)
+        logging.info("Setting PROG_DIR to '%s'", PROG_DIR)
 
     if not os.path.exists("%s/config.py" % PROG_DIR):
-        logger.info("config file does not exist, calling do_config_setup()")
+        logging.info("config file does not exist, calling do_config_setup()")
         do_config_setup()
 
     try:
         sys.path.append(PROG_DIR)
-        from config import *
+        import config
     except:
-        logger.critical("could not import config.py")
+        logging.critical("could not import config.py")
         sys.exit(1)
-    logger.debug("Imported config")
+    logging.debug("Imported config")
 
-    check_feeds()
+    check_feeds(config.FEEDS, config.EMAIL_TO)
+
+if __name__ == '__main__':
+    main()
