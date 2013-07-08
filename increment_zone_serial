@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Michael Vallaly (Mar '10) Ver 2.5
+# from: <https://github.com/slaught/enki_cloud/blob/master/scripts/scripts/dns-increment>
+#
+# Modified by Jason Antman <jason@jasonantman.com>
+
+# This script updates/increments the bind zone file serial number
+
+SED_BIN="/bin/sed"
+AWK_BIN="/usr/bin/awk"
+DATE_BIN="/bin/date"
+BC_BIN="/usr/bin/bc"
+GREP_BIN="/bin/grep"
+
+###########################################################################################
+
+# Get the serial number from a bind zonefile
+get_serial () {
+
+  local target=$1
+
+  # Grab the SOA DNS Zone Header
+  SOA_HEADER=`cat $target |$SED_BIN 's/;.*$//' |$AWK_BIN '/^[A-Za-z0-9\-\.]*[\t \.\@]+IN[\t ]+SOA[\t ]+[A-Za-z0-9\-\. \t]+\(/,/\)/' |tr -d '\n' |awk '{print $7}'`
+
+  # Get the currently set serial number
+  echo "$SOA_HEADER" |tr -t '[:lower:]' '[:upper:]' |$GREP_BIN -E -e '[[:digit:]]{10}' -e '%SERIAL%'
+
+}
+
+# Check for required binaries
+for req_bin in $AWK_BIN $SED_BIN $DATE_BIN $BC_BIN $GREP_BIN; do
+  if [ ! -x "$req_bin" ]; then
+    echo "Can't execute ${req_bin}! Aborting.."
+    exit 1
+  fi
+done
+
+# Check for needed commandline arguments
+usage="$0 <zone_file>"
+if [ $# -le 0 ]; then
+  echo "$usage"
+  exit 1
+else
+  FILE=`echo $1`
+fi
+
+if [ ! -e "${FILE}" ]; then
+    echo "ERROR: file $FILE does not exist, exiting."
+    exit 1
+fi
+
+# Generate todays base serial number
+DATE_NOW=`$DATE_BIN +%Y%m%d`
+
+# Current serial
+OLD_SERIAL=`get_serial ${FILE}`
+
+# Check that we got something back for a serial
+if [ "${OLD_SERIAL}" == "" ]; then
+  echo "Cannot find zone file ${FILE} serial number.. Exiting!"
+  exit 1
+fi
+
+# Split up the serial
+OLD_DATE=`echo $OLD_SERIAL |cut -c 1-8`
+OLD_REV=`echo $OLD_SERIAL |cut -c 9-10`
+
+if [ "${OLD_REV}x" == "x" ]; then
+    OLD_REV=01
+fi
+
+# If the current date number is greater just use it
+if [ "$(echo "$DATE_NOW > $OLD_DATE" |$BC_BIN)" -eq "1" ]; then
+    NEW_SERIAL="${DATE_NOW}01"
+
+# If we have the same date number increment the revsion number
+elif [ "$(echo "$DATE_NOW == $OLD_DATE" |$BC_BIN)" -eq "1" ] ; then
+
+    # Increment the revision number
+    if [ "$(echo "$OLD_REV <= 98" |$BC_BIN)" -eq "1" ]; then
+      NEW_REV=`printf "%02d\n" "$(echo "$OLD_REV + 1" |$BC_BIN)"`
+      NEW_SERIAL="${DATE_NOW}${NEW_REV}"
+    else
+      echo "Too many revision for today wait till tomorrow.. Exiting!"
+      exit 1
+    fi
+
+else
+    echo "Current zonefile serial is in the future.. Time Skew? Exiting!"
+    exit 1
+fi
+
+# Replace the serial # and install the new zonefile
+$SED_BIN -e "s/${OLD_SERIAL}/${NEW_SERIAL}/" -i $FILE
+replace_status=$?
