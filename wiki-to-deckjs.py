@@ -4,10 +4,14 @@ simple, awful script to change markdown-like (very restricted markup set) markup
 """
 
 import sys
+import re
+
+ol_re = re.compile(r"^\d+\.\s(.*)")
 
 in_slide = False
 in_ul = False
 in_2ul = False
+in_ol = False
 for line in sys.stdin:
     if line.strip() == "":
         if in_slide:
@@ -17,6 +21,9 @@ for line in sys.stdin:
             if in_ul:
                 print "\t</ul>"
                 in_ul = False
+            if in_ol:
+                print "\t</ol>"
+                in_ol = False
             print '</section>'
             in_slide = False
             continue
@@ -30,6 +37,9 @@ for line in sys.stdin:
         in_2ul = False
     if in_ul and not line.startswith("* ") and not line.startswith("** ") and not in_2ul:
         print "\t</ul>"
+        in_ul = False
+    if in_ol and not ol_re.match(line):
+        print "\t</ol>"
         in_ul = False
 
     if not in_slide:
@@ -53,6 +63,12 @@ for line in sys.stdin:
             in_2ul = True
         line = line[3:].strip()
         print "\t\t\t<li>%s</li>" % line
+    elif ol_re.match(line):
+        m = ol_re.match(line)
+        if not in_ol:
+            print "\t<ol>"
+            in_ol = True
+        print "\t\t<li>%s</li>" % m.group(1)
     else:
         #sys.stderr.write("UNKNOWN LINE: %s\n" % line)
         print "\t<p>%s</p>" % line.strip()
@@ -66,8 +82,3 @@ if in_ul:
 
 print '</section>'
 # done
-"""
-	<h2>Cluster Architecture</h2>
-	<object data="graphite_data2.svg" type="image/svg+xml"></object>
-</section>
-"""
