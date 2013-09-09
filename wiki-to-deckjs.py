@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
-
-# simple, awful script to change wiki markup to deck.js html
+"""
+simple, awful script to change markdown-like (very restricted markup set) markup to deck.js-ready html
+"""
 
 import sys
 
@@ -9,21 +10,36 @@ in_ul = False
 in_2ul = False
 for line in sys.stdin:
     if line.strip() == "":
-        continue
+        if in_slide:
+            if in_2ul:
+                print "\t\t</ul>"
+                in_2ul = False
+            if in_ul:
+                print "\t</ul>"
+                in_ul = False
+            print '</section>'
+            in_slide = False
+            continue
+    else:
+        if not in_slide:
+            in_slide = True
+            print '<section class="slide">'
 
     if in_2ul and not line.startswith("** "):
         print "\t\t</ul>"
         in_2ul = False
-    if in_ul and not line.startswith("* ") and not in_2ul:
+    if in_ul and not line.startswith("* ") and not line.startswith("** ") and not in_2ul:
         print "\t</ul>"
         in_ul = False
 
-    if line.startswith("##"):
-        if in_slide:
-            print '</section>'
-        in_slide = True
+    if not in_slide:
+        continue
+
+    if line.startswith("# "):
         line = line[2:].strip()
-        print '<section class="slide">'
+        print "\t<h1>%s</h1>" % line
+    elif line.startswith("## "):
+        line = line[2:].strip()
         print "\t<h2>%s</h2>" % line
     elif line.startswith("* "):
         if not in_ul:
