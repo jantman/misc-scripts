@@ -10,7 +10,7 @@ By Jason Antman <jason@jasonantman.com> <http://blog.jasonantman.com>
 LICENSE: GPLv3
 
 The latest version of this script will always be available at:
-<>
+<https://github.com/jantman/misc-scripts/blob/master/rss_to_mail.py>
 
 If you have any modifications/improvements, please send me a patch
 or a pull request.
@@ -23,6 +23,8 @@ to ~/.rsstomail/config.py and edit it as needed. Then cron up the script.
 
 The first time it sees a new feed, it won't send anything, it will just grab
 all the entries and mark them as seen.
+
+NOTE - This script sends email using the local SMTP server.
 
 CHANGELOG:
 * Fri Jun  7 2013 <jason@jasonamtan.com>:
@@ -37,9 +39,16 @@ import urllib2 #feedparser requires this too
 import pickle
 import feedcache
 import shelve
-#import feedparser
-
+import re
+import time
 import logging
+import getpass # to find current username for email footer
+import platform
+
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email import message
 
 PROG_DIR="~/.rsstomail"
 CONFIG_EXAMPLE_URL="https://raw.github.com/jantman/misc-scripts/master/rss_to_mail_config.py"
@@ -80,17 +89,15 @@ def do_config_setup():
         logging.critical("Please edit example config file and copy to %s/config.py", PROG_DIR)
         sys.exit(1)
 
-def check_one_feed(name, url, title_regex = None, body_regex = None):
+def check_one_feed(name, config):
     """
-    :param fc: an initialized feedcache.Cache object
     :param name: name of the feed, as defined in the config file
-    :param url: url of the feed, from the config file
-    :param title_regex: optional, a regex to match the entry title against
-    :param body_regex: optional, a regex to match the entry body against
+    :param config: configuration file dict for this feed
 
-    retrns a list of all new entries matching the specified regexes
+    retrns a dict {'matching_entries': list of all new entries matching the specified regexes, 'link': feed link}
     """
 
+    url = config['url']
     matching = []
     logging.info("checking feed '%s' (%s)", name, url)
 
@@ -100,7 +107,7 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
         storage = shelve.open(SHELVE_FILE)
     except:
         logging.critical("unable to open feedcache shelve file (%s)", SHELVE_FILE)
-        return []
+        return {'matching_entries': [], 'link': ""}
 
     try:
         logging.debug("initialize feedcache.Cache")
@@ -110,13 +117,13 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
     except:
         logging.error("unable to fetch/cache feed '%s' from %s", name, url)
         storage.close()
-        return []
+        return {'matching_entries': [], 'link': ""}
 
     storage.close()
 
     if 'bozo_exception' in parsed_data:
         logging.error("exception parsing feed '%s': %s", name, parsed_data['bozo_exception'])
-        return []
+        return {'matching_entries': [], 'link': ""}
 
     SEEN_PICKLE_FILE = "%s/%s.pkl" % (PROG_DIR, name)
     if os.path.exists(SEEN_PICKLE_FILE):
@@ -133,13 +140,44 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
 
     matching_entries = [] # store the entries that match, return then when we're done
 
+    if 'title_regex' in config:
+        if 'title_regex_i' in config:
+            title_re = re.compile(config['title_regex'], re.I)
+        else:
+            title_re = re.compile(config['title_regex'])
+    if 'body_regex' in config:
+        if 'body_regex_i' in config:
+            body_re = re.compile(config['body_regex'], re.I)
+        else:
+            body_re = re.compile(config['body_regex'])
+
     for entry in parsed_data.entries:
         if entry.id not in seen_ids:
             seen_ids.append(entry.id)
             logging.debug("feed %s: new entry: id %s", name, entry.id)
-            print entry.id
             # process the entry
-            matching_entries.append(entry)
+            title_match = False
+            if 'title_regex' in config:
+                if title_re.match(entry.title):
+                    logging.debug("title regex match, title '%s', id %s", entry.title, entry.id)
+                    title_match = True
+            body_match = False
+            if 'body_regex' in config:
+                if body_re.match(entry.title):
+                    logging.debug("body regex match, id %s", entry.id)
+                    body_match = True
+            if 'title_regex' in config and 'body_regex' in config:
+                if title_match and body_match:
+                    matching_entries.append(entry)
+            elif 'title_regex' in config:
+                if title_match:
+                    matching_entries.append(entry)
+            elif 'body_regex' in config:
+                if body_match:
+                    matching_entries.append(entry)
+            else:
+                # else we just want everything new
+                matching_entries.append(entry)
         else:
             logging.debug("feed %s: already seen: id %s", name, entry.id)
 
@@ -152,9 +190,13 @@ def check_one_feed(name, url, title_regex = None, body_regex = None):
     except:
         logging.error("could not write seen_ids to pickle file for feed '%s'", name)
 
-    return matching_entries
+    if 'feed' in parsed_data and 'link' in parsed_data['feed']:
+        link = parsed_data['feed']['link']
+    else:
+        link = ""
+    return {'matching_entries': matching_entries, 'link': link}
 
-def check_feeds(FEEDS, EMAIL_TO):
+def check_feeds(FEEDS, EMAIL_TO, EMAIL_TEXT_ONLY, EMAIL_FROM):
     """
     :param FEEDS: FEEDS dict from config file
     :param EMAIL_TO: EMAIL_TO list from config file
@@ -162,16 +204,79 @@ def check_feeds(FEEDS, EMAIL_TO):
     Main function to handle checking all of the feeds and sending mail on anything new.
     """
     
+    matched = {}
+    links = {}
     for feed in FEEDS:
-        if 'title_regex' not in FEEDS[feed]:
-            FEEDS[feed]['title_regex'] = None
-        if 'body_regex' not in FEEDS[feed]:
-            FEEDS[feed]['body_regex'] = None
-        foo = check_one_feed(feed, FEEDS[feed]['url'], FEEDS[feed]['title_regex'], FEEDS[feed]['body_regex'])
+        foo = check_one_feed(feed, FEEDS[feed])
+        logging.info("matched %i entries in feed %s", len(foo['matching_entries']), feed)
+        if len(foo) > 0:
+            matched[feed] = foo['matching_entries']
+            links[feed] = foo['link']
+    
+    # ok, we have all of our stuff, format an email to send
+    subject = "rss_to_mail - new feed items"
+    plain = "rss_to_mail new feed items at %s\n\n" % time.strftime('%a, %B %s %Y %H:%M')
+    html = "<html><head><body><p>rss_to_mail new feed items at %s</p>\n" % time.strftime('%a, %B %s %Y %H:%M')
 
+    for feed in matched:
+        # print header for each feed
+        if feed in links:
+            plain = plain + "\n\n%s <%s>\n" % (feed, links[feed])
+            html = html + "<p><strong><a href=\"%s\">%s</a></p>" % (feed, links[feed])
+        else:
+            plain = plain + "%s\n" % feed
+            html = html + "<p><strong>%s</p>" % feed
+        html = html + "<p><ul>"
+        for entry in matched[feed]:
+            # print link/info for each entry
+            plain = plain + "+ %s (%s) <%s>\n" % (entry['title'], entry['published'], entry['link'])
+            html = html + "<li><a href=\"%s\">%s</a> (published at %s)</li>" % (entry['link'], entry['title'], entry['published'])
+        html = html + "</ul></p>"
 
+    # TODO - footer for where and how this was generated - hostname, path to script, PROG_DIR, username, date, time
+    username = getpass.getuser()
+    hostname = platform.node()
+    foo = "Generated by: %s running as user %s on %s at %s, configured with PROG_DIR=%s" % (__file__, username, hostname, time.strftime('%a, %B %s %Y %H:%M:%S'), PROG_DIR)
+    plain = plain + "\n\n" + foo + "\n"
+    html = html + "<br /><p><em>%s</em></p>\n" % foo
+
+    html = html + "</body></html>\n"
+    
+    # send mail
+    if DRY_RUN:
+        print "Dry Run only. Not sending mail."
+        print "Would have sent the following to: %s" % ", ".join(EMAIL_TO)
+        print "#### HTML #####"
+        print html
+        print "#### PLAIN #####"
+        print plain
+    else:
+        if EMAIL_TEXT_ONLY:
+            s = smtplib.SMTP('localhost')
+            logging.debug("formatted mail as MIME")
+            for addr in EMAIL_TO:
+                msg = "From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s\r\n" % (EMAIL_FROM, addr, subject, plain)
+                s.sendmail(EMAIL_FROM, addr, msg)
+                logging.debug("sent email to %s" % addr)
+            s.quit()
+        else:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = EMAIL_FROM
+            part1 = MIMEText(plain, 'plain')
+            part2 = MIMEText(html, 'html')
+            msg.attach(part1)
+            msg.attach(part2)
+            s = smtplib.SMTP('localhost')
+            logging.debug("formatted mail as MIME")
+            for addr in EMAIL_TO:
+                msg['To'] = addr
+                s.sendmail(EMAIL_FROM, addr, msg.as_string())
+                logging.debug("sent email to %s" % addr)
+            s.quit()
+        
 def main():
-    global DEBUG, PROG_DIR, VERBOSE
+    global PROG_DIR, DRY_RUN
     cmd_parser = OptionParser(version="%prog",description="RSS to Email Script", usage="%prog [options]")
     cmd_parser.add_option("-d", "--dir", type="string", action="store", dest="dir", default="~/.rsstomail", help="Program config/save directort (default: ~/.rsstomail")
     cmd_parser.add_option("-r", "--dry-run", action="store_true", dest="dryrun", default=False, help="Dry run - don't send mail, just show what would be sent on STDOUT")
@@ -206,7 +311,11 @@ def main():
         sys.exit(1)
     logging.debug("Imported config")
 
-    check_feeds(config.FEEDS, config.EMAIL_TO)
+    try:
+        config.EMAIL_TEXT_ONLY
+    except NameError:
+        config.EMAIL_TEXT_ONLY = False
+    check_feeds(config.FEEDS, config.EMAIL_TO, config.EMAIL_TEXT_ONLY, config.EMAIL_FROM)
 
 if __name__ == '__main__':
     main()
