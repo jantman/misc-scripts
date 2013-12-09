@@ -17,6 +17,7 @@ file.
 * __dumpMysqlGrants.sh__ - Script to dump all grants from a MySQL server, for input into another.
 * __dump_skype_logs.py__ - Script to dump all Skype logs from a main.db file to HTML
 * __find_outdated_puppets.py__ - Script to look at a Puppet Dashboard unhidden-nodes.csv and extract the latest report time for each node, optionally, list nodes with runtime BEFORE a string.
+* __git_repo_diff.py__ - uses GitPython to compare 2 git repo clones and report on branches that only exist in one, or have different head commits in the two repos
 * __htmldata.py__ - Perl library to manipulate HTML or XHTML documents, required by mw2html-auth
 * __increment_zone_serial__ - This script updates/increments the bind zone file serial number in a file specified as the first argument
 * __js2phpdoc.php__ - script to take comments and function prototypes from JS files and make them PHP-ish to be parsed by phpdoc
