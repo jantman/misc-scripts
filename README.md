@@ -22,6 +22,7 @@ file.
 * __increment_zone_serial__ - This script updates/increments the bind zone file serial number in a file specified as the first argument
 * __js2phpdoc.php__ - script to take comments and function prototypes from JS files and make them PHP-ish to be parsed by phpdoc
 * __kickRsyslog.php__ - script to restart rsyslog if it appears to have stopped logging
+* __libvirt_csv.py__ - Use libvirt python bindings to print CSV lists of dom0_host,domU_name,ID,state,UUID for all qemu+kvm VMs running on libvirt hosts passed in as arguments
 * __LICENSE__ - License for these files - GPLv3 with additional provisions
 * __linode_ddns_update.sh__ - simple script to use Linode's HTTP API to update Linode DNS for a dynamic IP
 * __linodeDnsToCsv.php__ - Script to pull DNS information for all of your Linode hosted zones, output as CSV
@@ -44,6 +45,7 @@ file.
 * __syslogDatesGraph.php__ - script to help visualize time distribution of syslog messages. This is the graph host part.
 * __syslogDatesToArray.php__ - script to help visualize time distribution of syslog messages. This is the log host part.
 * __syslogDatesToArray-sample.ser__ - example serialized data for syslogDatesGraph.php
+* __test_libvirt.py__ - some tests using the libvirt python bindings, for qemu+kvm hosts accessed over SSH
 * __timeout__ - shell script to execute a command with a timeout
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
 * __VipToInternalHosts.pl__ - script to take F5 BigIp VIP address and display the members of the pool it is served by
