@@ -1,0 +1,21 @@
+#!/bin/bash
+
+BRANCH=$1
+
+current_branch=$(git symbolic-ref -q HEAD)
+current_branch=${current_branch##refs/heads/}
+current_branch=${current_branch:-HEAD}
+
+git fetch &>/dev/null
+git checkout $BRANCH &>/dev/null
+git pull &>/dev/null
+BRANCH_COMMIT=$(git rev-parse $BRANCH)
+git checkout master &>/dev/null
+if `git log | grep $BRANCH_COMMIT &>/dev/null`
+then
+    echo "$BRANCH is merged into master ($BRANCH_COMMIT)"
+    echo "Branches containing HEAD of AUTO-274:"
+    git branch -a --contains $BRANCH_COMMIT
+else
+    echo "$BRANCH NOT in master, merge-base is $(git merge-base master $BRANCH)"
+fi

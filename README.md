@@ -20,6 +20,7 @@ file.
 * __git_repo_diff.py__ - uses GitPython to compare 2 git repo clones and report on branches that only exist in one, or have different head commits in the two repos
 * __htmldata.py__ - Perl library to manipulate HTML or XHTML documents, required by mw2html-auth
 * __increment_zone_serial__ - This script updates/increments the bind zone file serial number in a file specified as the first argument
+* __ismerged__ - shell script that takes a git branch name, and tells if it is merged into master or not
 * __js2phpdoc.php__ - script to take comments and function prototypes from JS files and make them PHP-ish to be parsed by phpdoc
 * __kickRsyslog.php__ - script to restart rsyslog if it appears to have stopped logging
 * __libvirt_csv.py__ - Use libvirt python bindings to print CSV lists of dom0_host,domU_name,ID,state,UUID for all qemu+kvm VMs running on libvirt hosts passed in as arguments
