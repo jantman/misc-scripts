@@ -36,7 +36,7 @@ ASSET_TODO = []
 
 DOMAIN_RE = None
 
-def parse_page(url, content, domain, verbose=False):
+def parse_page(url, content, domain, strip_qs=False, strip_anchors=False, verbose=False):
     """
     - parse page content with beautifulsoup
     - pull out any a href links, append them to TODO if not
@@ -98,7 +98,7 @@ def parse_page(url, content, domain, verbose=False):
     print("+++ Found %d script src's, appended %d new ones." % (len(srcs), appended))
     return True
 
-def do_page(url, domain, verbose=False):
+def do_page(url, domain, strip_qs=False, strip_anchors=False, verbose=False):
     """
     Request a page. If it returns 200, pass the content
     on to parse_page; else just print a message.
@@ -111,7 +111,7 @@ def do_page(url, domain, verbose=False):
     if res.status_code != 200:
         print("++ returned status %s, moving on" % res.status_code)
     else:
-        parse_page(url, res.content, domain, verbose)
+        parse_page(url, res.content, domain, strip_qs, strip_anchors, verbose)
     DONE.append(url)
     TODO.remove(url)
     return True
@@ -124,7 +124,7 @@ def do_asset(url, domain, verbose=False):
     ASSET_DONE.append(url)
     ASSET_TODO.remove(url)
 
-def crawl(domain, sleep=0.0, limit=0, verbose=False):
+def crawl(domain, sleep=0.0, limit=0, strip_qs=False, strip_anchors=False, verbose=False):
     """
     Crawl all pages in the TODO list until it's empty.
     Print a short report about each page crawled.
@@ -134,7 +134,7 @@ def crawl(domain, sleep=0.0, limit=0, verbose=False):
     TODO.append('http://%s/' % domain)
     count = 0
     while len(TODO) > 0:
-        do_page(TODO[0], domain, verbose)
+        do_page(TODO[0], domain, strip_qs, strip_anchors, verbose)
         count = count + 1
         print("Pages: %d TODO, %d DONE - Assets: %d TODO" % (len(TODO), len(DONE), len(ASSET_TODO)))
         if limit > 0 and count > limit:
@@ -171,6 +171,10 @@ def parse_opts(argv):
                       help='time to sleep between requests (float; default 0)')
     parser.add_option('-l', '--limit', dest='limit', action='store', type='int', default=0,
                       help='limit to this (int) number of pages and assets (each); 0 for no limit')
+    parser.add_option('--strip-qs', dest='strip_qs', action='store_true', default=False,
+                      help='strip query strings from URLs (? and everything after; default false)')
+    parser.add_option('--strip-anchors', dest='strip_anchors', action='store_true', default=False,
+                      help='strip anchors from URLs (default False)')
 
     options, args = parser.parse_args(argv)
 
@@ -186,7 +190,7 @@ def main():
     """
     opts = parse_opts(sys.argv[1:])
 
-    crawl(opts.domain, opts.sleep, opts.limit, opts.verbose)
+    crawl(opts.domain, opts.sleep, opts.limit, opts.strip_qs, opts.strip_anchors, opts.verbose)
 
 if __name__ == "__main__":
     main()
