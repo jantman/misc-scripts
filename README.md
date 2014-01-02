@@ -8,6 +8,7 @@ I'll try and update this readme with descriptions of all of the scripts.
 Unless otherwise noted, these are distributed under the terms of the LICENSE
 file.
 
+* __apache_log_verify_site_move.py__ - Python script that parses Apache HTTPD access logs, finds all unique URLs, and compares the current HTTP response code to that of another server. Useful when moving a site.
 * __bigipcookie.pl__ - Perl script to de/encode F5 BigIp persistence cookies.
 * __check_url_list.py__ - Script to check a list of URLs (passed on stdin) for response code, and for response code of the final path in a series of redirects.
 * __cmd-wrapper.c__ - C wrapper for a setuid/gid command, to ensure that ONLY a certain command and args can be run.
@@ -40,6 +41,7 @@ file.
 * __rsync-wrapper.c__ - setuid/gid wrapper around rsync. Useful to allow members of a specified group to do rsync backups as root over SSH.
 * __rsyslogIsHung.php__ - script to investigate rsyslog hangs, write output, and send mail
 * __rsyslogPstats.php__ - script to parse rsyslog impstats output and generate a simple report
+* __scrape_domain.py__ - Python script using requests and BeautifulSoup4 to request all URLs/links/images/CSS/feeds/etc. found on a domain.
 * __show_dhcp_fixed_ACKs.pl__ - script to show the most recent DHCP ACKs per IP address for ISC DHCPd, from a log file. Originally written for Vyatta routers that just show the dynamic leases
 * __simpleLCDproc.py__ - Simple LCDproc replacement in Python. Uses LCDd server.
 * __syslogAgeChecker.php__ - script to check timestamp of last syslog line in some files, and send mail if >= X seconds
