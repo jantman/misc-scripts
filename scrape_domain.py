@@ -36,6 +36,30 @@ ASSET_TODO = []
 
 DOMAIN_RE = None
 
+def url_strip(url, strip_qs=False, strip_anchors=False):
+    """
+    Return url (string), with query string and/or anchors
+    stripped off of it.
+
+    :param url: the URL
+    :type url: string
+    :param strip_qs: True to strip query string
+    :type strip_qs: boolean
+    :param strip_anchors: True to strip anchors
+    :type string_anchors: boolean
+    :return: url with query string and/or anchors stripped
+    :rtype: string
+    """
+    if strip_qs:
+        idx = url.find('?')
+        if idx > -1:
+            url = url[:idx]
+    if strip_anchors:
+        idx = url.find('#')
+        if idx > -1:
+            url = url[:idx]
+    return url
+
 def parse_page(url, content, domain, strip_qs=False, strip_anchors=False, verbose=False):
     """
     - parse page content with beautifulsoup
