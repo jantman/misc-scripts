@@ -23,9 +23,10 @@ CHANGELOG:
 import sys
 import optparse
 import re
+import time
 
 import requests
-from bs4 import BeautifulSoup
+import lxml.html
 
 # yeah, I'm bad and lazy. I'm using globals for this.
 DONE = []
@@ -35,7 +36,7 @@ ASSET_TODO = []
 
 DOMAIN_RE = None
 
-def parse_page(content, domain, verbose=False):
+def parse_page(url, content, domain, verbose=False):
     """
     - parse page content with beautifulsoup
     - pull out any a href links, append them to TODO if not
@@ -46,34 +47,55 @@ def parse_page(content, domain, verbose=False):
     """
     global DOMAIN_RE
 
-    bs = BeautifulSoup(content, "lxml")
+    doc = lxml.html.fromstring(content)
+    doc.make_links_absolute(url)
 
-    # links
-    for l in bs.find_all('a'):
-        try:
-            href = l.get('href')
-        except:
-            continue
-        #print("+++ found link: %s" % href) # TODO this should be DEBUG not VERBOSE
+    hrefs = doc.xpath('//a/@href')
+    appended = 0
+    for href in hrefs:
+        #print("+++ found a href: %s" % href) # TODO this should be DEBUG not VERBOSE
         if DOMAIN_RE.match(href):
             if href not in DONE and href not in TODO:
-                print("++++ append link to todo: %s" % href) # TODO this should be DEBUG not VERBOSE
+                print("++++ append a href to todo: %s" % href) # TODO this should be DEBUG not VERBOSE
                 TODO.append(href)
+                appended = appended + 1
+    print("+++ Found %d a href's, appended %d new ones." % (len(hrefs), appended))
 
     # images
-    for i in bs.find_all('img'):
-        try:
-            src = i.get('src')
-        except:
-            continue
-        print("+++ found img src: %s" % src) # TODO this should be DEBUG not VERBOSE
+    srcs = doc.xpath('//img/@src')
+    appended = 0
+    for src in srcs:
+        #print("+++ found img src: %s" % src) # TODO this should be DEBUG not VERBOSE
         if DOMAIN_RE.match(src):
             if src not in ASSET_DONE and src not in ASSET_TODO:
-                print("++++ asset src to todo: %s" % src) # TODO this should be DEBUG not VERBOSE
+                print("++++ append img src to todo: %s" % src) # TODO this should be DEBUG not VERBOSE
                 ASSET_TODO.append(src)
+                appended = appended + 1
+    print("+++ Found %d img src's, appended %d new ones." % (len(srcs), appended))
 
-    # css
-    # feeds
+    # css, feeds, etc. - HEAD link href
+    hrefs = doc.xpath('//link/@href')
+    appended = 0
+    for href in hrefs:
+        #print("+++ found link href: %s" % href) # TODO this should be DEBUG not VERBOSE
+        if DOMAIN_RE.match(href):
+            if href not in ASSET_DONE and href not in ASSET_TODO:
+                print("++++ append link href to todo: %s" % href) # TODO this should be DEBUG not VERBOSE
+                ASSET_TODO.append(href)
+                appended = appended + 1
+    print("+++ Found %d link href's, appended %d new ones." % (len(hrefs), appended))
+
+    # scripts - HEAD script src
+    srcs = doc.xpath('//script/@src')
+    appended = 0
+    for src in srcs:
+        #print("+++ found script src: %s" % src) # TODO this should be DEBUG not VERBOSE
+        if DOMAIN_RE.match(src):
+            if src not in ASSET_DONE and src not in ASSET_TODO:
+                print("++++ append script src to todo: %s" % src) # TODO this should be DEBUG not VERBOSE
+                ASSET_TODO.append(src)
+                appended = appended + 1
+    print("+++ Found %d script src's, appended %d new ones." % (len(srcs), appended))
     return True
 
 def do_page(url, domain, verbose=False):
@@ -89,12 +111,20 @@ def do_page(url, domain, verbose=False):
     if res.status_code != 200:
         print("++ returned status %s, moving on" % res.status_code)
     else:
-        parse_page(res.content, domain, verbose)
+        parse_page(url, res.content, domain, verbose)
     DONE.append(url)
     TODO.remove(url)
     return True
 
-def crawl(domain, verbose=False):
+def do_asset(url, domain, verbose=False):
+    """
+    Request an asset. Remove it from TODO and append to DONE.
+    """
+    r = requests.get(url)
+    ASSET_DONE.append(url)
+    ASSET_TODO.remove(url)
+
+def crawl(domain, sleep=0.0, limit=0, verbose=False):
     """
     Crawl all pages in the TODO list until it's empty.
     Print a short report about each page crawled.
@@ -102,15 +132,27 @@ def crawl(domain, verbose=False):
     global DOMAIN_RE
     DOMAIN_RE = re.compile(r'^http://' + domain)
     TODO.append('http://%s/' % domain)
+    count = 0
     while len(TODO) > 0:
         do_page(TODO[0], domain, verbose)
+        count = count + 1
         print("Pages: %d TODO, %d DONE - Assets: %d TODO" % (len(TODO), len(DONE), len(ASSET_TODO)))
-        break # DEBUG
+        if limit > 0 and count > limit:
+            print("Reached limit of %d, break." % limit)
+            break
+        if sleep > 0:
+            time.sleep(sleep)
     print("= Done with pages, starting assets")
+    count = 0
     while len(ASSET_TODO) > 0:
         do_asset(ASSET_TODO[0], domain, verbose)
+        count = count + 1
         print("Assets: %d TODO %d DONE" % (len(ASSET_TODO), len(ASSET_DONE)))
-        break # DEBUG
+        if limit > 0 and count > limit:
+            print("Reached limit of %d, break." % limit)
+            break
+        if sleep > 0:
+            time.sleep(sleep)
     print("Done.")
 
 def parse_opts(argv):
@@ -125,8 +167,10 @@ def parse_opts(argv):
                       help='domain to crawl (and limit crawl to)')
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true', default=False,
                       help='verbose output')
-
-           
+    parser.add_option('-s', '--sleep', dest='sleep', action='store', type='float', default=0.0,
+                      help='time to sleep between requests (float; default 0)')
+    parser.add_option('-l', '--limit', dest='limit', action='store', type='int', default=0,
+                      help='limit to this (int) number of pages and assets (each); 0 for no limit')
 
     options, args = parser.parse_args(argv)
 
@@ -142,7 +186,7 @@ def main():
     """
     opts = parse_opts(sys.argv[1:])
 
-    crawl(opts.domain, opts.verbose)
+    crawl(opts.domain, opts.sleep, opts.limit, opts.verbose)
 
 if __name__ == "__main__":
     main()
