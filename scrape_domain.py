@@ -46,6 +46,7 @@ def parse_page(url, content, domain, strip_qs=False, strip_anchors=False, verbos
       ASSET_DONE
     """
     global DOMAIN_RE
+    global TODO, DONE, ASSET_TODO, ASSET_DONE
 
     doc = lxml.html.fromstring(content)
     doc.make_links_absolute(url)
@@ -55,7 +56,7 @@ def parse_page(url, content, domain, strip_qs=False, strip_anchors=False, verbos
     for href in hrefs:
         #print("+++ found a href: %s" % href) # TODO this should be DEBUG not VERBOSE
         if DOMAIN_RE.match(href):
-            # TODO - implement strip_qs and strip_anchors here
+            href = url_strip(href, strip_qs, strip_anchors)
             if href not in DONE and href not in TODO:
                 print("++++ append a href to todo: %s" % href) # TODO this should be DEBUG not VERBOSE
                 TODO.append(href)
@@ -71,7 +72,7 @@ def parse_page(url, content, domain, strip_qs=False, strip_anchors=False, verbos
         for item in items:
             #print("+++ found asset: %s" % item) # TODO this should be DEBUG not VERBOSE
             if DOMAIN_RE.match(item):
-                # TODO - implement strip_qs and strip_anchors here
+                item = url_strip(item, strip_qs, strip_anchors)
                 if item not in ASSET_DONE and item not in ASSET_TODO:
                     print("++++ append asset to todo: %s" % item) # TODO this should be DEBUG not VERBOSE
                     ASSET_TODO.append(item)
@@ -86,6 +87,8 @@ def do_page(url, domain, strip_qs=False, strip_anchors=False, verbose=False):
 
     Either way, remove the url from TODO and append to DONE.
     """
+    global TODO, DONE
+
     res = requests.get(url)
     if verbose:
         print("+ page %s" % url)
@@ -101,6 +104,7 @@ def do_asset(url, domain, verbose=False):
     """
     Request an asset. Remove it from TODO and append to DONE.
     """
+    global ASSET_TODO, ASSET_DONE
     r = requests.get(url)
     ASSET_DONE.append(url)
     ASSET_TODO.remove(url)
@@ -111,6 +115,8 @@ def crawl(domain, sleep=0.0, limit=0, strip_qs=False, strip_anchors=False, verbo
     Print a short report about each page crawled.
     """
     global DOMAIN_RE
+    global TODO, DONE, ASSET_TODO, ASSET_DONE
+
     DOMAIN_RE = re.compile(r'^http://' + domain)
     TODO.append('http://%s/' % domain)
     count = 0
