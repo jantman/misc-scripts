@@ -55,47 +55,28 @@ def parse_page(url, content, domain, strip_qs=False, strip_anchors=False, verbos
     for href in hrefs:
         #print("+++ found a href: %s" % href) # TODO this should be DEBUG not VERBOSE
         if DOMAIN_RE.match(href):
+            # TODO - implement strip_qs and strip_anchors here
             if href not in DONE and href not in TODO:
                 print("++++ append a href to todo: %s" % href) # TODO this should be DEBUG not VERBOSE
                 TODO.append(href)
                 appended = appended + 1
     print("+++ Found %d a href's, appended %d new ones." % (len(hrefs), appended))
 
-    # images
-    srcs = doc.xpath('//img/@src')
+    # images, css, feeds, scripts, etc.
     appended = 0
-    for src in srcs:
-        #print("+++ found img src: %s" % src) # TODO this should be DEBUG not VERBOSE
-        if DOMAIN_RE.match(src):
-            if src not in ASSET_DONE and src not in ASSET_TODO:
-                print("++++ append img src to todo: %s" % src) # TODO this should be DEBUG not VERBOSE
-                ASSET_TODO.append(src)
-                appended = appended + 1
-    print("+++ Found %d img src's, appended %d new ones." % (len(srcs), appended))
-
-    # css, feeds, etc. - HEAD link href
-    hrefs = doc.xpath('//link/@href')
-    appended = 0
-    for href in hrefs:
-        #print("+++ found link href: %s" % href) # TODO this should be DEBUG not VERBOSE
-        if DOMAIN_RE.match(href):
-            if href not in ASSET_DONE and href not in ASSET_TODO:
-                print("++++ append link href to todo: %s" % href) # TODO this should be DEBUG not VERBOSE
-                ASSET_TODO.append(href)
-                appended = appended + 1
-    print("+++ Found %d link href's, appended %d new ones." % (len(hrefs), appended))
-
-    # scripts - HEAD script src
-    srcs = doc.xpath('//script/@src')
-    appended = 0
-    for src in srcs:
-        #print("+++ found script src: %s" % src) # TODO this should be DEBUG not VERBOSE
-        if DOMAIN_RE.match(src):
-            if src not in ASSET_DONE and src not in ASSET_TODO:
-                print("++++ append script src to todo: %s" % src) # TODO this should be DEBUG not VERBOSE
-                ASSET_TODO.append(src)
-                appended = appended + 1
-    print("+++ Found %d script src's, appended %d new ones." % (len(srcs), appended))
+    found_items = 0
+    for xp in ['//img/@src', '//link/@href', '//script/@src']:
+        items = doc.xpath(xp)
+        found_items = found_items + len(items)
+        for item in items:
+            #print("+++ found asset: %s" % item) # TODO this should be DEBUG not VERBOSE
+            if DOMAIN_RE.match(item):
+                # TODO - implement strip_qs and strip_anchors here
+                if item not in ASSET_DONE and item not in ASSET_TODO:
+                    print("++++ append asset to todo: %s" % item) # TODO this should be DEBUG not VERBOSE
+                    ASSET_TODO.append(item)
+                    appended = appended + 1
+    print("+++ Found %d assets, appended %d new ones." % (found_items, appended))
     return True
 
 def do_page(url, domain, strip_qs=False, strip_anchors=False, verbose=False):
