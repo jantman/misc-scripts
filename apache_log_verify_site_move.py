@@ -9,7 +9,7 @@ to a static site, to verify that proper redirects and content
 were migrated over.
 
 REQUIREMENTS:
-apachelog >= 1.0 (from pypi)
+apache_log_parser >= 1.3.0 (from pypi)
 
 By Jason Antman <jason@jasonantman.com> <http://blog.jasonantman.com>
 LICENSE: GPLv3
@@ -32,7 +32,7 @@ import os
 import optparse
 import re
 
-import apachelog # 1.0
+import apache_log_parser
 
 LOG_FORMAT = "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\" %D"
 
@@ -68,27 +68,36 @@ def get_log_urls(logfiles, logformat, verbose=False):
     :rtype: dict, string keys to int values
     """
     temp = {}
-    p = apachelog.parser(logformat)
+    p = apache_log_parser.make_parser(logformat)
     for fpath in logfiles:
         parsefail = 0
         lcount = 0
         if verbose:
             print("++ Parsing %s" % fpath)
         for line in open(fpath):
+            line = str(line).strip()
             lcount = lcount + 1
             try:
-                data = p.parse(line)
-                print data
+                data = p(line)
+                if data['request_method'] != 'GET':
+                    continue
+                if data['request_url'] not in temp:
+                    temp[data['request_url']] = {'datetime': data['time_recieved_datetimeobj'],
+                                                 'status': data['status']}
+                else:
+                    if temp[data['request_url']]['time_recieved_datetimeobj'] < data['time_recieved_datetimeobj']:
+                        temp[data['request_url']] = {'datetime': data['time_recieved_datetimeobj'],
+                                                     'status': data['status']}
             except Exception, e:
                 if verbose:
-                    print e
+                    print("Parse Exception: %s for line '%s'" % (str(e), line))
                 parsefail = parsefail + 1
         sys.stderr.write("++ Failed parsing %d of %d lines from %s" % (parsefail, lcount, fpath))
         break
     # remove the dates
     ret = {}
     for f in temp:
-        ret[f] = temp[f]['rcode']
+        ret[f] = temp[f]['status']
     return ret
 
 def parse_opts(argv):
