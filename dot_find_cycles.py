@@ -60,12 +60,8 @@ def main():
     G = nx.DiGraph(nx.read_dot(path))
 
     C = nx.simple_cycles(G)
-    if(len(C) < 1):
-        sys.exit(0)
     for i in C:
         print i
-    
-        
 # Run
 
 if __name__ == "__main__":
