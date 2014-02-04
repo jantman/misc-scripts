@@ -195,7 +195,7 @@ def parse_opts(argv):
     parser.add_option('-I', '--ip', dest='ip', action='store', type='string', default=None,
                       help='IP address to make requests to. If -H|--host is also specified, it will be sent as a Host: header')
 
-    parser.add_option('-p', '--port', dest='port', action='store', type='integer', default=80,
+    parser.add_option('-p', '--port', dest='port', action='store', type='int', default=80,
                       help='port to make requests to (default 80)')
 
     parser.add_option('-d', '--logdir', dest='logdir', action='store', type='string',
