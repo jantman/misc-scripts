@@ -129,7 +129,7 @@ def get_log_urls(logfiles, logformat, strip_qs=False, strip_anchors=False, verbo
         ret[f] = temp[f]['status']
     return ret
 
-def confirm_urls(urls, host=None, ip=None, sleep=0.0, limit=0, verbose=False):
+def confirm_urls(urls, host=None, ip=None, port=80, sleep=0.0, limit=0, verbose=False):
     """
     Confirm that the given URLs have the specified HTTP response code.
 
@@ -139,6 +139,8 @@ def confirm_urls(urls, host=None, ip=None, sleep=0.0, limit=0, verbose=False):
     :type host: string
     :param ip: IP address to request from.
     :type ip: string
+    :param port: port to use for requests (default 80)
+    :type port: integer
     :param sleep: how long to sleep between requests, default 0
     :type sleep: float
     :param limit: stop after this number of requests, default 0 (no limit)
@@ -156,6 +158,8 @@ def confirm_urls(urls, host=None, ip=None, sleep=0.0, limit=0, verbose=False):
     else:
         url_base = "http://%s" % ip
         headers['Host'] = host
+    if port != 80 and port is not None:
+        url_base = "%s:%d" % (url_base, port)
 
     rdict = {}
     count = 0
@@ -190,6 +194,9 @@ def parse_opts(argv):
 
     parser.add_option('-I', '--ip', dest='ip', action='store', type='string', default=None,
                       help='IP address to make requests to. If -H|--host is also specified, it will be sent as a Host: header')
+
+    parser.add_option('-p', '--port', dest='port', action='store', type='integer', default=80,
+                      help='port to make requests to (default 80)')
 
     parser.add_option('-d', '--logdir', dest='logdir', action='store', type='string',
                       help='path to directory containing apache access logs')
@@ -268,7 +275,7 @@ def main():
         print("+ Confirming %d paths..." % len(urls))
 
     # ok, now do stuff with them
-    res = confirm_urls(urls, host=opts.host, ip=opts.ip, sleep=opts.sleep, limit=opts.limit, verbose=opts.verbose)
+    res = confirm_urls(urls, host=opts.host, ip=opts.ip, port=opts.port, sleep=opts.sleep, limit=opts.limit, verbose=opts.verbose)
 
     changed = 0
     total = len(res)
