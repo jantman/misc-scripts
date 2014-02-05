@@ -43,4 +43,4 @@ for repo in g.get_organization(orgname).get_repos():
     f = " fork of %s/%s" % (repo.parent.owner.name, repo.parent.name) if repo.fork else ''
     p = 'private' if repo.private else 'public'
     fc = "; %d forks" % (repo.forks_count) if (repo.forks_count > 0) else ''
-    print("%s (%s%s%s)" % (repo.name, p, f, fc))
+    print("%s (%s%s%s) %s" % (repo.name, p, f, fc, repo.url))
