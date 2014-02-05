@@ -29,6 +29,7 @@ file.
 * __linode_ddns_update.sh__ - simple script to use Linode's HTTP API to update Linode DNS for a dynamic IP
 * __linodeDnsToCsv.php__ - Script to pull DNS information for all of your Linode hosted zones, output as CSV
 * __linode_list_records.py__ - Simple script to list all records in Linode DNS via API, along with their type, DomainID and ResourceID
+* __list_github_org_repos.py__ - List information about an org's repositories using PyGithub (GitHub API library)
 * __mw2html-auth__ - Produce an HTML version (standalone backup/export) of a MediaWiki site that's behind authentication
 * __nagios_log_problem_interval.pl__ - Chart intervals between problem and recovery from Nagios/Icinga logs
 * __nmap-xml-to-table.php__ - Script to transform multiple nmap XML output files (presumably of the same host/port range with different scan options) into a HTML table
