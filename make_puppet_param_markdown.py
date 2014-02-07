@@ -23,12 +23,15 @@ if not os.path.exists(fname):
 
 start_re = re.compile(r'^\s*(define|class).*\($')
 end_re = re.compile(r'.*{$')
+comment_re = re.compile(r'^\s*#')
 
 lines = []
 in_params = False
 with open(fname, 'r') as fh:
     for line in fh:
         line = line.strip()
+        if comment_re.match(line):
+            continue
         if not in_params and start_re.match(line):
             in_params = True
         elif in_params and end_re.match(line):
@@ -40,9 +43,14 @@ if len(lines) < 1:
     sys.stderr.write("ERROR: did not find any params in %s\n" % fname)
     sys.exit(1)
 
-line_re = re.compile(r'\s*\$(?P<varname>\S+)(\s+=\s*(\S+))?,?$')
+line_re = re.compile(r'\s*\$(?P<varname>\S+)(\s+=\s*(?P<val>\S+.*))?,?$')
 for line in lines:
-    print line
     foo = line_re.match(line)
-    print foo.groupdict()
-
+    d = foo.groupdict()
+    print("# [*%s*]" % d['varname'])
+    print("#   ()")
+    if 'val' in d:
+        print("#   (optional; default: %s)" % d['val'])
+    else:
+        print("#   (required)")
+    print("#")
