@@ -47,10 +47,10 @@ line_re = re.compile(r'\s*\$(?P<varname>\S+)(\s+=\s*(?P<val>\S+.*))?,?$')
 for line in lines:
     foo = line_re.match(line)
     d = foo.groupdict()
-    print("# [*%s*]" % d['varname'])
+    print("# [*%s*]" % d['varname'].strip(', '))
     print("#   ()")
-    if 'val' in d:
-        print("#   (optional; default: %s)" % d['val'])
+    if 'val' in d and d['val'] is not None:
+        print("#   (optional; default: %s)" % d['val'].strip(', '))
     else:
         print("#   (required)")
     print("#")
