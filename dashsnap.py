@@ -170,6 +170,7 @@ def format_html(title, body):
 <body>
 """
     html_foot = """
+<p>created with <a href="https://github.com/jantman/misc-scripts/blob/master/dashsnap.py">https://github.com/jantman/misc-scripts/blob/master/dashsnap.py</a></p>
 </body>
 </html>
 """
