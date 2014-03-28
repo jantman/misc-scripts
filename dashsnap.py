@@ -56,13 +56,14 @@ def get_dashboard_graphs(graphite, dashboard, verbose=False):
         graph_list.append(g[1])
     return graph_list
 
-def make_snapshots(graphite, outdir, graphs, from_datetime=None, to_datetime=None, intervals=None, verbose=False, height=768, width=1024):
+def make_snapshots(graphite, outdir, graphs, from_datetime=None, to_datetime=None, intervals=None, verbose=False, height=768, width=1024, name=None):
     """
     Capture PNG and JSON snapshots of graphs
 
     EITHER from_datetime and to_datetime *or* intervals (list of from= strings)
     """
     from_until_pairs = []
+    dirs = {}
     if from_datetime is not None and to_datetime is not None:
         from_until_pairs.append( (from_datetime.strftime("%H:%M_%Y%m%d"), to_datetime.strftime("%H:%M_%Y%m%d")) )
     else:
@@ -71,21 +72,35 @@ def make_snapshots(graphite, outdir, graphs, from_datetime=None, to_datetime=Non
     if verbose:
         print("starting %d snapshot sets..." % len(from_until_pairs))
     for (from_str, until_str) in from_until_pairs:
-        dirname = os.path.join(outdir, make_safe_filename(from_str + "_to_" + until_str))
+        t = make_safe_filename(from_str + "_to_" + until_str)
+        dirname = os.path.join(outdir, t)
         os.mkdir(dirname)
-        snapshot_graphs(graphite, dirname, graphs, from_str, until_str, height=height, width=width, verbose=verbose)
+        snapshot_graphs(graphite, dirname, graphs, from_str, until_str, height=height, width=width, verbose=verbose, name=name)
+        dirs[t] = "%s to %s" % (from_str, until_str)
     if verbose:
         print("make_snapshots finished")
+    write_snapshots_index(outdir, dirs, title=name, verbose=verbose)
     return True
 
-def snapshot_graphs(graphite, outdir, graphs, graph_from, graph_until, height=768, width=1024, verbose=False):
+def write_snapshots_index(outdir, dirs, title="", verbose=False):
+    s = "<p>%s</p>\n<ul>" % title
+    for d in dirs:
+        s = s + "<li><a href=\"%s/index.html\">%s</a></li>" % (d, dirs[d])
+    s = s + "</ul>"
+    with open(os.path.join(outdir, 'index.html'), 'w') as fh:
+        fh.write(format_html(title, s))
+    return True
+
+def snapshot_graphs(graphite, outdir, graphs, graph_from, graph_until, height=768, width=1024, verbose=False, name=None):
     """
     snapshot a dashboard with a given from and until time
+    return a list of the filenames that were created
     """
     url = "http://%s/render" % graphite
     untitled_count = 0
     img_count = 0
     json_count = 0
+    files = []
     for gdict in graphs:
         gdict['height'] = "%d" % height
         gdict['width'] = "%d" % width
@@ -124,9 +139,43 @@ def snapshot_graphs(graphite, outdir, graphs, graph_from, graph_until, height=76
             if verbose:
                 print("\twrote JSON to %s" % json_path)
             json_count = json_count + 1
+        files.append(fname)
     if verbose:
         print("saved %d graph images and %d raw JSON data files" % (img_count, json_count))
+    write_image_index(outdir, files, orig_height=height, orig_width=width, title="%s from %s to %s" % (name, graph_from, graph_until), verbose=verbose)
     return True
+
+def write_image_index(outdir, files, orig_height=768, orig_width=1024, title="", verbose=False):
+    height = int(orig_height / 4)
+    width = int(orig_width / 4)
+    s = "<table border=\"1\">\n<tr>"
+    for i, fname in enumerate(files):
+        s = s + "<td>%s<br />\n" % fname
+        s = s + "<a href=\"%s.png\">\n" % fname
+        s = s + "<img src=\"%s.png\" height=\"%d\" width=\"%d\" />\n" % (fname, height, width)
+        s = s + "</a><br /><a href=\"%s.json\">json</a></td>\n" % (fname)
+        if (i + 1) % 4 == 0:
+            s = s + "</tr>\n<tr>"
+    s = s + "</tr></table>"
+    with open(os.path.join(outdir, 'index.html'), 'w') as fh:
+        fh.write(format_html(title, s))
+    return True
+
+def format_html(title, body):
+    html_head = """
+<html>
+<head>
+<title>%s</title>
+</head>
+<body>
+"""
+    html_foot = """
+</body>
+</html>
+"""
+    s = html_head % title
+    s = s + body + html_foot
+    return s
 
 def parse_args(argv):
     """ parse command line options """
@@ -226,4 +275,5 @@ if __name__ == "__main__":
                    to_datetime=opts.to_date,
                    intervals=opts.intervals,
                    height=opts.height,
-                   width=opts.width)
+                   width=opts.width,
+                   name=opts.dashboard )
