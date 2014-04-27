@@ -3,6 +3,15 @@
 sync_git_clones.py
 -------------------
 
+NOTICE - 2014-04-26 I got this script to this point, and then found that a known bug in
+GitPython (https://github.com/gitpython-developers/GitPython/issues/28) prevents
+it from fetching *any* repository that has a remote configured with a non-branch,
+non-tag refspec, such as the ones used by GitHub (refs/pull/*/head) to check
+out pull requests. As such, this is unusable to me until this issue is fixed.
+I have enough projects in progress, I can't devote the time to trying to fix
+this issue in GitPython correctly. So, this is going to sit here, partially
+finished, until the issue is fixed.
+
 A script to keep your git clones (in a specified list of directories) in sync
 with origin and optionally upstream, and optionally to keep origin's master
 branch in sync with upstream.
