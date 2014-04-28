@@ -12,6 +12,9 @@ of shelling out like a bad person. Then I found that ConfigParser barfs on any
 lines with leading space, like .git/config. Oh well. I can't fix *every* upstream
 bug.
 
+The canonical version of this script lives at:
+https://github.com/jantman/misc-scripts/blob/master/github_clone_setup.py
+
 Requirements
 ============
 * Python 2.7+ (uses subprocess.check_output)
@@ -48,7 +51,9 @@ def get_config_value(confpath, key):
 
 def add_config_value(confpath, key, value):
     """ adds a git config value using `git config` """
-    output = subprocess.check_output(['git', 'config', '--file=%s' % confpath, '--add', '%s' % key, value])
+    cmd = ['git', 'config', '--file=%s' % confpath, '--add', '%s' % key, value]
+    output = subprocess.check_output(cmd)
+    print(" ".join(cmd))
     return output
 
 
@@ -103,7 +108,9 @@ def setup_upstream(confpath, gitdir):
     repo = gh.repository(owner, reponame)
     if repo.fork:
         upstream_url = repo.parent.ssh_url
-        subprocess.check_call(['git', '--work-tree=%s' % gitdir, '--git-dir=%s' % (os.path.join(gitdir, '.git')), 'remote', 'add', 'upstream', upstream_url])
+        cmd = ['git', '--work-tree=%s' % gitdir, '--git-dir=%s' % (os.path.join(gitdir, '.git')), 'remote', 'add', 'upstream', upstream_url]
+        subprocess.check_call(cmd)
+        print(" ".join(cmd))
     return True
 
 
