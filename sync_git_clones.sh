@@ -2,6 +2,9 @@
 #
 # WARNING - WARNING - WARNING this is alpha code, and probably buggy. be very careful about using it.
 #
+# I *wanted* to use Python and GitPython for this, but due to
+# https://github.com/gitpython-developers/GitPython/issues/28
+# GitPython dies on any repo with the refs/pull fetch ref.
 #
 # Script to sync all local git clones in a list of paths with
 # origin (and upstream, if configured). If present, uses
