@@ -191,7 +191,7 @@ def parse_args(argv):
                       help='dashboard name to snapshot')
 
     parser.add_option('-i', '--intervals', dest='intervals', action='store', type='string', default=default_intervals,
-                      help='list of graphite-style from intervals to snapshot (implicitly until=now)')
+                      help="list of graphite-style from intervals to snapshot (implicitly until=now)\nDefault: %s" % default_intervals)
 
     parser.add_option('-f', '--from', dest='from_str', action='store', type='string',
                       help='from time, [Y-m-d ]H:M:S')
