@@ -29,10 +29,10 @@ def parse_args(argv):
     """ parse arguments/options """
     p = optparse.OptionParser()
 
-    parser.add_option('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
+    p.add_option('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
                       help='dry-run - dont actually send metrics')
 
-    parser.add_option('-v', '--verbose', dest='verbose', action='count', default=0,
+    p.add_option('-v', '--verbose', dest='verbose', action='count', default=0,
                       help='verbose output. specify twice for debug-level output.')
 
     options, args = p.parse_args(argv)
