@@ -37,9 +37,6 @@ def parse_args(argv):
 
     options, args = p.parse_args(argv)
 
-    if not options.url:
-        raise SystemExit("ERROR: -u|--url must be specified.")
-
     return options
 
 
