@@ -113,13 +113,17 @@ def generate_report_html_table(reviews, base_url):
         user = rev._links['submitter']['title']
         if user not in users:
             users[user] = []
-        users[user].append({'id': rev.id,
-                            'url': rev.url,
-                            'updated': parse_rb_time_string(rev.last_updated),
-                            'submitter': user,
-                            'summary': rev.summary,
-                            'repo': rev._links['repository']['title'],
-                        })
+        user_dict = {'id': rev.id,
+                     'url': rev.url,
+                     'updated': parse_rb_time_string(rev.last_updated),
+                     'submitter': user,
+                     'summary': rev.summary,
+        }
+        try:
+            user_dict['repo'] = rev._links['repository']['title']
+        except KeyError:
+            user_dict['repo'] = 'unknown'
+        users[user].append(user_dict)
 
     html = "<table border=\"1\">\n" + header
     for user in sorted(users):
@@ -212,7 +216,7 @@ def parse_args(argv):
     p = optparse.OptionParser()
 
     p.add_option('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
-                      help='dry-run - dont actually send metrics')
+                      help='dry-run - dont actually send anything')
 
     p.add_option('-v', '--verbose', dest='verbose', action='count', default=0,
                       help='verbose output. specify twice for debug-level output.')
@@ -224,7 +228,7 @@ def parse_args(argv):
                       help="CSV list of review groups to show reviews for")
 
     p.add_option('-a', '--age', dest='age', action='store', type='int', default=7,
-                 help='notify on reviews with no update in at least this many days (defaul 7)')
+                 help='notify on reviews with no update in at least this many days (default 7)')
 
     options, args = p.parse_args(argv)
 
