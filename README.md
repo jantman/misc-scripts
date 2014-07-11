@@ -60,6 +60,7 @@ file.
 * __syslogDatesToArray-sample.ser__ - example serialized data for syslogDatesGraph.php
 * __test_libvirt.py__ - some tests using the libvirt python bindings, for qemu+kvm hosts accessed over SSH
 * __timeout__ - shell script to execute a command with a timeout
+* __twitter_find_followed_not_in_list.py__ - Simple script to list anyone whom you're following but isn't in one of your lists.
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
 * __VipToInternalHosts.pl__ - script to take F5 BigIp VIP address and display the members of the pool it is served by
 * __wiki-to-deckjs.py__ - simple, awful script to change markdown-like (very restricted markup set) markup to deck.js-ready html
