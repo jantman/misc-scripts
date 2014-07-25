@@ -48,6 +48,7 @@ file.
 * __rsync-wrapper.c__ - setuid/gid wrapper around rsync. Useful to allow members of a specified group to do rsync backups as root over SSH.
 * __rsyslogIsHung.php__ - script to investigate rsyslog hangs, write output, and send mail
 * __rsyslogPstats.php__ - script to parse rsyslog impstats output and generate a simple report
+* __savescreen.py__ - Python script to save screen windows and titles, and write a screenrc to recreate them.
 * __scrape_domain.py__ - Python script using requests and BeautifulSoup4 to request all URLs/links/images/CSS/feeds/etc. found on a domain.
 * __show_dhcp_fixed_ACKs.pl__ - script to show the most recent DHCP ACKs per IP address for ISC DHCPd, from a log file. Originally written for Vyatta routers that just show the dynamic leases
 * __simpleLCDproc.py__ - Simple LCDproc replacement in Python. Uses LCDd server.
