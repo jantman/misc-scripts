@@ -17,6 +17,10 @@
 # 2014-07-24
 #   * first public version
 #
+# 2014-07-25
+#   * restored windows should go to their last PWD, set in ~/.bashrc
+#     (see <http://blog.jasonantman.com/2014/07/session-save-and-restore-with-bash-and-gnu-screen/>)
+#
 ####################################################
 
 import subprocess
@@ -77,14 +81,15 @@ with open(os.path.join(os.path.expanduser('~'), '.screenrc'), 'r') as fh:
 screenrc = screenrc.replace("screen -t local 0\n", "")
 
 # write it out to the save location, with the windows added
+dirpath = os.path.join(os.path.expanduser('~'), '.screendirs')
 with open(os.path.join(os.path.expanduser('~'), '.screenrc.save'), 'w') as fh:
     fh.write(screenrc)
     fh.write("\n\n")
     fh.write("# .screenrc.save generated on %s at %s\n" % (node(), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     for n in range(0, max_window + 1):
         if n in windows:
-            fh.write("screen -t \"{name}\" {num}\n".format(name=windows[n], num=n))
+            fh.write("screen -t \"{name}\" {num} sh -c \"cd $(readlink -fn {dirpath}/{num}); bash\"\n".format(name=windows[n], num=n, dirpath=dirpath))
         else:
-            fh.write("screen -t \"{name}\" {num}\n".format(name='bash', num=n))
+            fh.write("screen -t \"{name}\" {num} sh -c \"cd $(readlink -fn {dirpath}/{num}); bash\"\n".format(name='bash', num=n, dirpath=dirpath))
     fh.write("\n")
 # done
