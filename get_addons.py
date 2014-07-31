@@ -14,6 +14,10 @@ import contextlib
 import tempfile
 import shutil
 import zipfile
+import traceback
+from lxml import etree
+from io import BytesIO
+import HTMLParser
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
@@ -67,20 +71,27 @@ class Addongetter:
                 failed += 1
             elif res == 1:
                 updated += 1
-            total += 1
+            if res != 2:
+                total += 1
 
         # other, generic addons
         logger.warning("Checked {t} modules; updated {u}; {f} failed".format(t=total, u=updated, f=failed))
         return True
 
     def update_addon(self, dirname):
-        """ given a dirname in addon_dir, update that addon """
-        addon_name = addon_name_from_dirname(dirname)
+        """
+        given a dirname in addon_dir, update that addon
+        returns: False on failure
+                 True on nothing to do
+                 2 on skipped
+                 1 on updated
+        """
+        addon_name = self.addon_name_from_dirname(dirname)
         if addon_name is False:
             logger.debug("got addon_name for {d} as False, skipping".format(d=dirname))
-            return True
+            return 2
         logger.info("beginning update for {a} (directory {d})".format(a=addon_name, d=dirname))
-        res = get_latest_from_curseforge(addon_name)
+        res = self.get_latest_from_curseforge(addon_name)
         if res is False:
             logger.warning("unable to find addon on curseforge: {a}".format(a=addon_name))
             return False
@@ -92,18 +103,42 @@ class Addongetter:
         """
         given an addon name, attempt to get the latest version and its
         download URL from curseforge
-        return a tuple of (semver, string url)
+        return a tuple of (semver, string url) or False on failure to determine version
         """
         pageurl = 'http://wow.curseforge.com/addons/{name}/files/'.format(name=name)
-        r = requests.get(pageurl)
+        logger.debug("getting curseforge addon files list: {url}".format(url=pageurl))
+        headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0'}
+        r = requests.get(pageurl, stream=True, headers=headers)
         if r.status_code != 200:
             logger.debug("got status code {s} back for page {p}".format(s=r.status_code, p=pageurl))
             return False
-        # need to parse the HTML. looking for <table class="listing"> as a start
+        try:
+            parser = etree.HTMLParser()
+            root = etree.parse(BytesIO(r.content), parser)
+            logger.debug("parsed with lxml etree")
+        except Exception as e:
+            #ex_type, ex, tb = sys.exc_info()
+            #tb_str = ''.join(traceback.format_stack(tb))
+            tb_str = traceback.format_exc()
+            logger.warning("exception parsing curseforge page:\n{e}: {t}".format(e=e, t=tb_str))
+            return False
+        tables = root.xpath("//table[@class='listing']")
+        if len(tables) < 1:
+            logger.warning("found no matching tables on page")
+            print(etree.tostring(root))
+            return False
+        for t in tables:
+            print("table:\n{t}".format(t=t))
+            print(etree.tostring(t))
+        raise SystemExit("debugging")
 
     def addon_name_from_dirname(self, dirname):
         """ from the addon dir name, get the name of the addon """
         # if we need to explicitly skip anything, do it here
+        if dirname.startswith('DataStore'):
+            return False
+        if dirname.startswith('Altoholic_'):
+            return False
         n = dirname.lower()
         return n
 
