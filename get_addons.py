@@ -26,6 +26,7 @@ try:
     from lxml import etree
     import requests
 except Exception as ex:
+    tb_str = traceback.format_exc()
     logger.critical("error with imports - please 'pip install lxml semantic_version requests'")
     raise SystemExit(tb_str)
 
