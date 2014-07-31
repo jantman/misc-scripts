@@ -17,6 +17,10 @@ from io import BytesIO
 import HTMLParser
 import hashlib
 
+FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+logging.basicConfig(level=logging.ERROR, format=FORMAT)
+logger = logging.getLogger(__name__)
+
 try:
     import semantic_version
     from lxml import etree
@@ -24,11 +28,6 @@ try:
 except Exception as ex:
     logger.critical("error with imports - please 'pip install lxml semantic_version requests'")
     raise SystemExit(tb_str)
-
-
-FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-logging.basicConfig(level=logging.ERROR, format=FORMAT)
-logger = logging.getLogger(__name__)
 
 
 class Addongetter:
