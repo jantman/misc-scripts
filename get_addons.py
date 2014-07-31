@@ -87,7 +87,10 @@ class Addongetter:
                 total += 1
 
         # other, generic addons
-        logger.warning("Checked {t} modules; updated {u}; {f} failed".format(t=total, u=updated, f=failed))
+        if self.dry_run:
+            logger.warning("Checked {t} modules; WOULD HAVE updated {u}; {f} failed".format(t=total, u=updated, f=failed))
+        else:
+            logger.warning("Checked {t} modules; updated {u}; {f} failed".format(t=total, u=updated, f=failed))
         return True
 
     def update_addon(self, dirname):
