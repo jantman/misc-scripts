@@ -64,10 +64,10 @@ class Addongetter:
 
         res = self.do_elvui()
         if res == 3:
-            logger.error("UPDATE FAILED: {d}".format(d=dirname))
+            logger.error("UPDATE FAILED: ElvUI{d}")
             failed += 1
         elif res == 1:
-            logger.info("UPDATED: {d}".format(d=dirname))
+            logger.info("UPDATED: ElvUI")
             updated += 1
         if res != 2:
             total += 1
