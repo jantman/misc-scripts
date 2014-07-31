@@ -117,19 +117,29 @@ class Addongetter:
             root = etree.parse(BytesIO(r.content), parser)
             logger.debug("parsed with lxml etree")
         except Exception as e:
-            #ex_type, ex, tb = sys.exc_info()
-            #tb_str = ''.join(traceback.format_stack(tb))
             tb_str = traceback.format_exc()
             logger.warning("exception parsing curseforge page:\n{e}: {t}".format(e=e, t=tb_str))
             return False
-        tables = root.xpath("//table[@class='listing']")
+        tables = root.xpath("//table[@class='listing']/tr/td[@class='col-filename']")
+        print(tables)
         if len(tables) < 1:
-            logger.warning("found no matching tables on page")
             print(etree.tostring(root))
+            logger.warning("found no matching tables on page")
             return False
-        for t in tables:
-            print("table:\n{t}".format(t=t))
-            print(etree.tostring(t))
+        table = tables[0].getparent().getparent()
+        rows = table.xpath('//tr')
+        latest = semantic_version.Version('0', partial=True)
+        for row in rows:
+            ver = None
+            if row.xpath("//td[@class='col-type']/span")[0].text != 'Release':
+                continue
+            if row.xpath("//td[@class='col-status']/span")[0].text != 'Normal':
+                continue
+            print(etree.tostring(row))
+            ver = row.xpath("//td[@class='col-file']/a")
+            print(ver)
+            fpath = row.xpath("//td[@class='col-file']/a")[0].attrib['href']
+            print(fpath)
         raise SystemExit("debugging")
 
     def addon_name_from_dirname(self, dirname):
