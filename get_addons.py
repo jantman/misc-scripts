@@ -38,11 +38,10 @@ class Addongetter:
         self.dry_run = dry_run
         self.addon_dir = self.find_addon_dir()
         self.do_backup = do_backup
-        if self.do_backup:
-            self.backup_dir = self.backup_dir_path(self.addon_dir)
-            if not os.path.exists(self.backup_dir):
-                logger.info("creating addon backup directory: {b}".format(b=self.backup_dir))
-                os.mkdir(self.backup_dir)
+        self.backup_dir = self.backup_dir_path(self.addon_dir)
+        if self.do_backup and not os.path.exists(self.backup_dir):
+            logger.info("creating addon backup directory: {b}".format(b=self.backup_dir))
+            os.mkdir(self.backup_dir)
         self.keep_temp = keep_temp
 
     def find_addon_dir(self):
