@@ -454,5 +454,5 @@ if __name__ == "__main__":
     elif opts.verbose > 0:
         logger.setLevel(logging.INFO)
 
-    klass = Addongetter(dry_run=opts.dry_run, keep_temp=opts.keep_temp, do_backup=(!opts.no_backup))
+    klass = Addongetter(dry_run=opts.dry_run, keep_temp=opts.keep_temp, do_backup=(not opts.no_backup))
     klass.run()
