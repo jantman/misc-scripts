@@ -34,13 +34,15 @@ except Exception as ex:
 class Addongetter:
 
 
-    def __init__(self, dry_run=False, keep_temp=False):
+    def __init__(self, dry_run=False, keep_temp=False, do_backup=True):
         self.dry_run = dry_run
         self.addon_dir = self.find_addon_dir()
-        self.backup_dir = self.backup_dir_path(self.addon_dir)
-        if not os.path.exists(self.backup_dir):
-            logger.info("creating addon backup directory: {b}".format(b=self.backup_dir))
-            os.mkdir(self.backup_dir)
+        self.do_backup = do_backup
+        if self.do_backup:
+            self.backup_dir = self.backup_dir_path(self.addon_dir)
+            if not os.path.exists(self.backup_dir):
+                logger.info("creating addon backup directory: {b}".format(b=self.backup_dir))
+                os.mkdir(self.backup_dir)
         self.keep_temp = keep_temp
 
     def find_addon_dir(self):
@@ -340,13 +342,13 @@ class Addongetter:
         addonpath = os.path.join(self.addon_dir, dirname)
         newdir = os.path.join(src_dir, dirname)
         backupdir = os.path.join(self.backup_dir, dirname)
-        if os.path.exists(backupdir):
+        if self.do_backup and os.path.exists(backupdir):
             if self.dry_run:
                 logger.warning("DRY RUN: would remove {d}".format(d=backupdir))
             else:
                 logger.info("deleting old backup {d}".format(d=backupdir))
                 shutil.rmtree(backupdir)
-        if os.path.exists(addonpath):
+        if self.do_backup and os.path.exists(addonpath):
             if self.dry_run:
                 logger.warning("DRY RUN: would move {n} to {d}".format(n=addonpath, d=backupdir))
             else:
@@ -436,6 +438,9 @@ def parse_args(argv):
     p.add_option('-k', '--keep-temp', dest='keep_temp', action='store_true', default=False,
                  help='keep temporary directories')
 
+    p.add_option('-b', '--no-backup', dest='no_backup', action='store_true', default=False,
+                 help='do not backup before updating')
+
     options, args = p.parse_args(argv)
 
     return options
@@ -449,5 +454,5 @@ if __name__ == "__main__":
     elif opts.verbose > 0:
         logger.setLevel(logging.INFO)
 
-    klass = Addongetter(dry_run=opts.dry_run, keep_temp=opts.keep_temp)
+    klass = Addongetter(dry_run=opts.dry_run, keep_temp=opts.keep_temp, do_backup=(!opts.no_backup))
     klass.run()
