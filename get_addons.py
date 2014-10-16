@@ -63,8 +63,8 @@ class Addongetter:
         updated = 0
         total = 0
 
-	# bug - doesn't handle versions like "7.07"
-	"""
+        # bug - doesn't handle versions like "7.07"
+        """
         res = self.do_elvui()
         if res == 3:
             logger.error("UPDATE FAILED: ElvUI{d}")
@@ -74,7 +74,7 @@ class Addongetter:
             updated += 1
         if res != 2:
             total += 1
-	"""
+        """
 
         for dirname in [ name for name in os.listdir(self.addon_dir) if os.path.isdir(os.path.join(self.addon_dir, name)) ]:
             if dirname.startswith('Blizzard_'):
@@ -133,7 +133,7 @@ class Addongetter:
         if not os.path.exists(tocpath):
             logger.error("could not find TOC for addon {a} at: {p}".format(p=tocpath, a=dirname))
             return False
-	ver = None
+        ver = None
         with open(tocpath, 'r') as fh:
             for line in fh:
                 m = version_re.match(line)
@@ -424,11 +424,11 @@ class Addongetter:
                 tmp = '0'
             parts[idx] = tmp
         new_s = '.'.join(parts)
-	try:
-        	v = semantic_version.Version(new_s, partial=True)
-	except Exception:
-		logger.error("ERROR creating semantic version for {s}".format(s=new_s))
-		return semantic_version.Version('0.0.0')
+        try:
+            v = semantic_version.Version(new_s, partial=True)
+        except Exception:
+            logger.error("ERROR creating semantic version for {s}".format(s=new_s))
+            return semantic_version.Version('0.0.0')
         return v
 
 
