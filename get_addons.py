@@ -17,6 +17,7 @@ from io import BytesIO
 import HTMLParser
 import hashlib
 from copy import deepcopy
+from functools import total_ordering
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
@@ -31,6 +32,80 @@ except Exception as ex:
     logger.critical("error with imports - please 'pip install lxml semantic_version requests'")
     raise SystemExit(tb_str)
 
+
+@total_ordering
+class AddonVersion:
+
+    non_semver_re = re.compile(r'^([0-9]|\.)+$')
+    ver_str = None
+    semver = None
+
+    def __init__(self, s):
+        self.ver_str = s
+        parts = s.split('.')
+        for idx, val in enumerate(parts):
+            tmp = val.strip('0')
+            if tmp == '':
+                tmp = '0'
+            parts[idx] = tmp
+        new_s = '.'.join(parts)
+        try:
+            v = semantic_version.Version(new_s, partial=True)
+            self.semver = v
+        except Exception:
+            logger.debug("Cannot create semver for '{s}'; falling back".format(s=s))
+        # if we can't use a semver, we need to do it manually
+        if not self.non_semver_re.match(s):
+            raise ValueError("AddonVersion only knows how to handle numeric non-semver versions.")
+
+    def __str__(self):
+        # we want the original, unaltered string
+        return self.ver_str
+
+    def __eq__(self, other):
+        if self.semver is not None and other.semver is not None:
+            return self.semver == other.semver
+        elif (self.semver is not None and other.semver is None) or (self.semver is None and other.semver is not None):
+            raise NotImplementedError("Don't know how to compare semver and non-semver versions")
+        # else both non-semver
+        if non_semver_vercmp(other) == 0:
+            return True
+        return False
+
+    def __lt__(self, other):
+        if self.semver is not None and other.semver is not None:
+            return self.semver < other.semver
+        elif (self.semver is not None and other.semver is None) or (self.semver is None and other.semver is not None):
+            raise NotImplementedError("Don't know how to compare semver and non-semver versions")
+        # else both non-semver
+        if non_semver_vercmp(other) < 0:
+            return True
+        return False
+
+    def non_semver_vercmp(self, other):
+        """
+        Compare two non-semver strings. Return like old __cmp__ methods:
+        -1 if self < other; 0 if self == other; 1 if self > other
+        """
+        s = self.ver_str.split('.')
+        o = other.ver_str.split('.')
+        while len(s) > 0 and len(o) > 0:
+            if int(s[0]) < int(o[0]):
+                return -1
+            if int(s[0]) > int(o[0]):
+                return 1
+            # they're equal; pop this part and continue with the next
+            s.pop(0)
+            o.pop(0)
+        if len(s) == 0 and len(o) == 0:
+            # nothing left, they're equal
+            return 0
+        # one is longer than the other; the longer one is greater
+        if len(s) > len(o):
+            return 1
+        if len(s) < len(o):
+            return -1
+        raise RuntimeError("non_semver_vercmp impossible fall-through; unreachable statement")
 
 class Addongetter:
 
@@ -493,19 +568,7 @@ class Addongetter:
         semantic_version.Version, even with partial=True, enforces some requirements on formatting
         this is a workaround for them
         """
-        parts = s.split('.')
-        for idx, val in enumerate(parts):
-            tmp = val.strip('0')
-            if tmp == '':
-                tmp = '0'
-            parts[idx] = tmp
-        new_s = '.'.join(parts)
-        try:
-            v = semantic_version.Version(new_s, partial=True)
-        except Exception:
-            logger.error("ERROR creating semantic version for {s}".format(s=new_s))
-            return semantic_version.Version('0.0.0')
-        return v
+        return AddonVersion(s)
 
 
 def parse_args(argv):
