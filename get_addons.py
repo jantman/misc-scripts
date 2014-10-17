@@ -16,6 +16,7 @@ import traceback
 from io import BytesIO
 import HTMLParser
 import hashlib
+from copy import deepcopy
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
@@ -33,10 +34,57 @@ except Exception as ex:
 
 class Addongetter:
 
+    suites = {}
+    suites['AuctioneerSuite'] = ['!Swatter',
+                                 'Auc-Advanced',
+                                 'Auc-Filter-Basic',
+                                 'Auc-ScanData',
+                                 'Auc-Stat-Histogram',
+                                 'Auc-Stat-Purchased',
+                                 'Auc-Stat-Simple',
+                                 'Auc-Stat-StdDev',
+                                 'Auc-Stat-iLevel',
+                                 'Auc-Util-FixAH',
+                                 'BeanCounter',
+                                 'Enchantrix',
+                                 'Enchantrix-Barker',
+                                 'Informant',
+                                 'SlideBar',
+                                 'Stubby',
+                             ]
+    suites['Altoholic'] = ['Altoholic',
+                           'Altoholic_Achievements',
+                           'Altoholic_Agenda',
+                           'Altoholic_Characters',
+                           'Altoholic_Grids',
+                           'Altoholic_Guild',
+                           'Altoholic_Search',
+                           'Altoholic_Summary',
+                           'DataStore',
+                           'DataStore_Achievements',
+                           'DataStore_Agenda',
+                           'DataStore_Auctions',
+                           'DataStore_Characters',
+                           'DataStore_Containers',
+                           'DataStore_Crafts',
+                           'DataStore_Currencies',
+                           'DataStore_Inventory',
+                           'DataStore_Mails',
+                           'DataStore_Pets',
+                           'DataStore_Quests',
+                           'DataStore_Reputations',
+                           'DataStore_Spells',
+                           'DataStore_Stats',
+                           'DataStore_Talents',
+                           ]
 
-    def __init__(self, dry_run=False, keep_temp=False, do_backup=True):
+
+    def __init__(self, dry_run=False, keep_temp=False, do_backup=True, addon_dir=None):
         self.dry_run = dry_run
-        self.addon_dir = self.find_addon_dir()
+        if addon_dir is not None:
+            self.addon_dir = addon_dir
+        else:
+            self.addon_dir = self.find_addon_dir()
         self.do_backup = do_backup
         self.backup_dir = self.backup_dir_path(self.addon_dir)
         if self.do_backup and not os.path.exists(self.backup_dir):
@@ -76,10 +124,9 @@ class Addongetter:
             total += 1
         """
 
-        for dirname in [ name for name in os.listdir(self.addon_dir) if os.path.isdir(os.path.join(self.addon_dir, name)) ]:
-            if dirname.startswith('Blizzard_'):
-                logger.debug("ignoring directory: {d}".format(d=dirname))
-                continue
+        addons = self.find_installed_addons()
+        logger.info("Found {c} installed addons: {a}".format(c=len(addons), a=" ".join(addons)))
+        for dirname in addons:
             res = self.update_addon(dirname)
             if res == 3:
                 logger.error("UPDATE FAILED: {d}".format(d=dirname))
@@ -96,6 +143,35 @@ class Addongetter:
         else:
             logger.warning("Checked {t} modules; updated {u}; {f} failed".format(t=total, u=updated, f=failed))
         return True
+
+    def find_installed_addons(self):
+        """ list all installed addons by name """
+        dirs = [ name for name in os.listdir(self.addon_dir) if os.path.isdir(os.path.join(self.addon_dir, name)) ]
+        remove = []
+        add = []
+        for dirname in dirs:
+            if dirname.startswith('Blizzard_'):
+                logger.debug("ignoring directory: {d}".format(d=dirname))
+                remove.append(dirname)
+        for s in self.suites:
+            have_suite = True
+            for name in self.suites[s]:
+                if name not in dirs:
+                    have_suite = False
+            if have_suite:
+                logger.info("Suite '{s}' found; ignoring individual directories: {d}".format(s=s, d=" ".join(self.suites[s])))
+                remove.extend(self.suites[s])
+                if s not in dirs:
+                    add.append(s)
+
+        logger.debug("Removing directories from list: {d}".format(d=" ".join(remove)))
+        logger.debug("Appending directories to list: {d}".format(d=" ".join(add)))
+        res = deepcopy(dirs)
+        for i in remove:
+            res.remove(i)
+        for i in add:
+            res.append(i)
+        return res
 
     def update_addon(self, dirname):
         """
@@ -448,6 +524,9 @@ def parse_args(argv):
     p.add_option('-b', '--no-backup', dest='no_backup', action='store_true', default=False,
                  help='do not backup before updating')
 
+    p.add_option('-a', '--addon-dir', dest='addon_dir', action='store',
+                 help='addon directory path')
+
     options, args = p.parse_args(argv)
 
     return options
@@ -461,5 +540,9 @@ if __name__ == "__main__":
     elif opts.verbose > 0:
         logger.setLevel(logging.INFO)
 
-    klass = Addongetter(dry_run=opts.dry_run, keep_temp=opts.keep_temp, do_backup=(not opts.no_backup))
+    if opts.addon_dir:
+        ad = opts.addon_dir
+    else:
+        ad = None
+    klass = Addongetter(dry_run=opts.dry_run, keep_temp=opts.keep_temp, do_backup=(not opts.no_backup), addon_dir=ad)
     klass.run()
