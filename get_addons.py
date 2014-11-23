@@ -267,6 +267,9 @@ class Addongetter:
             return 3
         logger.debug("addon {a} got latest version as {l} url {u}".format(a=addon_name, l=res['semver'], u=res['url']))
         current = self.get_current_addon_version(dirname)
+        if not current:
+            logger.error("addon {a} could not get current version; skipping".format(a=addon_name))
+            return 2
         logger.debug("addon {a} got current version as {c}".format(a=addon_name, c=current))
         if current >= res['semver']:
             logger.debug("addon {a} is current, moving on".format(a=addon_name))
