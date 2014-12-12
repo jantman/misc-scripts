@@ -133,8 +133,11 @@ def parse_args(argv):
                  help='verbose (debugging) output')
     p.add_option('-s', '--sleep-time', dest='sleeptime', action='store', type=int, default=15,
                  help='time in seconds to sleep between status checks; default 15')
-    p.add_option('-p', '--pushover', dest='pushover', action='store_true', default=False,
-                 help='notify on completion via pushover')
+    push_default = False
+    if os.path.exists(os.path.expanduser('~/.watch_jenkins_pushover')):
+        push_default = True
+    p.add_option('-p', '--pushover', dest='pushover', action='store_true', default=push_default,
+                 help='notify on completion via pushover (default {p}; touch ~/.watch_jenkins_pushover to default to True)'.format(p=push_default))
 
     options, args = p.parse_args(argv)
 
