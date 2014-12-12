@@ -10,6 +10,17 @@ pip install python-pushover (optional)
 for pushover configuration, see:
 http://pythonhosted.org/python-pushover/
 you should setup a ~/.pushoverrc
+
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+https://github.com/jantman/misc-scripts/blob/master/watch_jenkins.py
+
+CHANGELOG:
+
+2014-12-12 jantman:
+- initial script
 """
 
 import sys

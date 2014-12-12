@@ -8,6 +8,17 @@ of a recovery.js file inside the sessionstore-backups/ directory. This script
 parses that file and outputs HTML with a list of links for your open tabs.
 
 Useful when sync is mishebaving.
+
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+https://github.com/jantman/misc-scripts/blob/master/firefox_recovery_to_html.py
+
+CHANGELOG:
+
+2014-12-08 jantman:
+- initial script
 """
 
 import os

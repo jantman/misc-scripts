@@ -1,4 +1,18 @@
 #!/usr/bin/env python
+"""
+Script to show CloudFormation template parameters and their values.
+
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+https://github.com/jantman/misc-scripts/blob/master/show_cf_template_params.py
+
+CHANGELOG:
+
+2014-12-05 jantman:
+- initial script
+"""
 
 import json
 import sys

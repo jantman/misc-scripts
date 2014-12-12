@@ -12,6 +12,12 @@ should be possible to simply check if a review was merged or not.
 requirements:
 RBTools>=0.6,<=0.7
 
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+https://github.com/jantman/misc-scripts/blob/master/reviewboard_reminder_mail.py
+
 CHANGELOG:
 2014-05-07 Jason Antman <jason@jasonantman.com> <@j_antman>:
 - intial version
