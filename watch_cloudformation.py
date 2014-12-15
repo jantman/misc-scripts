@@ -7,9 +7,13 @@ requirements:
 pip install boto
 pip install python-pushover (optional)
 
-for pushover configuration, see:
-http://pythonhosted.org/python-pushover/
-you should setup a ~/.pushoverrc
+for pushover configuration, see the section on ~/.pushoverrc in the Configuration section:
+http://pythonhosted.org/python-pushover/#configuration
+
+for boto configuration, see the section on ~/.boto in the Getting Started guide:
+http://docs.pythonboto.org/en/latest/getting_started.html#configuring-boto-credentials
+
+##################
 
 Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
@@ -21,6 +25,8 @@ CHANGELOG:
 
 2014-12-12 jantman:
 - initial script
+2014-12-14 jantman:
+- add better links to config docs
 """
 
 import sys
