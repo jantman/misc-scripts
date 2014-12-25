@@ -1,52 +1,68 @@
 #!/usr/bin/env python
 """
-Generic python2/3 command line script skeleton.
-
-Implements most of the common stuff I put in one-off scripts
+Generic python2.7+ (incl. py3x) command line script skeleton.
+This implements most of the common stuff I put in one-off scripts
 to make them actually not-so-shitty.
+
+If you have ideas for improvements, or want the latest version, it's at:
+<https://github.com/jantman/misc-scripts/blob/master/skeleton.py>
+
+NOTE that I've converted this from using the now-deprecated optparse
+module for option parsing, to the new argparse module. This was only
+introduced in Python 2.7; if you need to run this on an older python,
+you'll likely need to flip back to using optparse. In that case,
+see <https://docs.python.org/2/library/optparse.html>.
 """
 
 import sys
-import optparse
+import argparse
 import logging
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
-logger = logging.getLogger(__name__)
 
 
-def main(dry_run=False):
-    """ do something """
-    if dry_run:
-        logger.info("would have done x()")
-    else:
-        logger.debug("calling x()")
-        x()
-    return True
+class SimpleScript:
+    """ might as well use a class. It'll make things easier later. """
+
+    def __init__(self, logger=None, dry_run=False, verbose=0):
+        """ init method, run at class creation """
+        # setup a logger; allow an existing one to be passed in to use
+        self.logger = logger
+        if logger is None:
+            self.logger = logging.getLogger(self.__class__.__name__)
+        if verbose > 1:
+            self.logger.setLevel(logging.DEBUG)
+        elif verbose > 0:
+            self.logger.setLevel(logging.INFO)
+        self.dry_run = dry_run
+
+    def run(self):
+        """ do stuff here """
+        self.logger.info("info-level log message")
+        self.logger.debug("debug-level log message")
+        self.logger.error("error-level log message")
+        print("run.")
 
 
 def parse_args(argv):
-    """ parse arguments/options """
-    p = optparse.OptionParser()
+    """
+    parse arguments/options
 
-    p.add_option('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
-                      help='dry-run - dont actually send metrics')
-
-    p.add_option('-v', '--verbose', dest='verbose', action='count', default=0,
+    this uses the new argparse module instead of optparse
+    see: <https://docs.python.org/2/library/argparse.html>
+    """
+    p = argparse.ArgumentParser(description='Sample python script skeleton.')
+    p.add_argument('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
+                      help="dry-run - don't actually make any changes")
+    p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
                       help='verbose output. specify twice for debug-level output.')
 
-    options, args = p.parse_args(argv)
+    args = p.parse_args(argv)
 
-    return options
-
+    return args
 
 if __name__ == "__main__":
-    opts = parse_args(sys.argv[1:])
-
-    if opts.verbose > 1:
-        logger.setLevel(logging.DEBUG)
-    elif opts.verbose > 0:
-        logger.setLevel(logging.INFO)
-
-    if opts:
-        main(dry_run=opts.dry_run)
+    args = parse_args(sys.argv[1:])
+    script = SimpleScript(dry_run=args.dry_run, verbose=args.verbose)
+    script.run()
