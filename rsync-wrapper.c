@@ -11,8 +11,8 @@
  * Modified 2012 by Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
  *  - configured for use as rsync wrapper
  *                                          
- * $HeadURL$
- * $LastChangedRevision$
+ * The latest version of this script can be found at:
+ * <https://github.com/jantman/misc-scripts/blob/master/rsync-wrapper.c>
  *                                          
  ********************************************/
 

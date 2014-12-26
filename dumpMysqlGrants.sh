@@ -6,8 +6,7 @@
 # Many thanks to him.
 #
 # The most up-to-date version of this script can be found at:
-# $HeadURL$
-# $LastChangedRevision$
+# <https://github.com/jantman/misc-scripts/blob/master/dumpMysqlGrants.sh>
 #
 
 mygrants()

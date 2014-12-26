@@ -12,9 +12,7 @@ This requires JingleManSweep's Python lcdproc package:
 <http://pypi.python.org/pypi/lcdproc> developed against version 0.02
 
 The canonical source of this script is:
-<http://svn.jasonantman.com/misc-scripts/simpleLCDproc.py>
-$HeadURL$
-$LastChangedRevision$
+<https://github.com/jantman/misc-scripts/blob/master/simpleLCDproc.py>
 """
 
 import time, datetime, os, commands

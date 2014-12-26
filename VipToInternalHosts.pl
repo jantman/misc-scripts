@@ -6,11 +6,10 @@
 # By Jason Antman <jason@jasonantman.com> 2012.
 #
 # The latest version of this script can always be found at:
-# $HeadURL$
-# This version is: $LastChangedRevision$
+# <https://github.com/jantman/misc-scripts/blob/master/VipToInternalHosts.pl>
 #
 # The post describing this script and giving updates can be found at:
-# <http://blog.jasonantman.com/?p=1129>
+# <http://blog.jasonantman.com/2012/04/perl-script-to-convert-f5-bigip-vip-address-to-list-of-internal-pool-member-addresses>
 #
 #----------------------------------------------------------------------------
 # This script was based off of one found in the F5 Networks iControl Wiki.

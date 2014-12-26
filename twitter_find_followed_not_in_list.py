@@ -3,6 +3,14 @@
 Terribly simple script using python-twitter to
 list any users you're following but whom aren't
 in any of your lists.
+
+##################
+
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+https://github.com/jantman/misc-scripts/blob/master/twitter_find_followed_not_in_list.py
 """
 
 import sys

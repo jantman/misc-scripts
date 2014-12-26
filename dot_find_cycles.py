@@ -3,7 +3,7 @@
 """
 dot_find_cycles.py - uses Pydot and NetworkX to find cycles in a dot file directed graph.
 
-Very helpful for 
+Very helpful for Puppet stuff.
 
 By Jason Antman <jason@jasonantman.com> 2012.
 
@@ -21,9 +21,6 @@ dot_find_cycles.py /path/to/file.dot
 
 The canonical source of this script can always be found from:
 <http://blog.jasonantman.com/2012/03/python-script-to-find-dependency-cycles-in-graphviz-dot-files/>
-
-$HeadURL$
-$LastChangedRevision$
 
 CHANGELOG:
     Wednesday 2012-03-28 Jason Antman <jason@jasonantman.com>:

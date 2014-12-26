@@ -19,7 +19,7 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 The latest version of this script can be found at:
-https://github.com/jantman/misc-scripts/blob/master/watch_jenkins.py
+https://github.com/jantman/misc-scripts/blob/master/watch_cloudformation.py
 
 CHANGELOG:
 

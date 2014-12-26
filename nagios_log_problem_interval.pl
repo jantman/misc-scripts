@@ -5,11 +5,10 @@
 # By Jason Antman <jason@jasonantman.com> 2012.
 #
 # The latest version of this script can always be found at:
-# $HeadURL$
-# This version is: $LastChangedRevision$
+# <https://github.com/jantman/misc-scripts/blob/master/nagios_log_problem_interval.pl>
 #
 # The post describing this script and giving updates can be found at:
-# <http://blog.jasonantman.com/?p=1169>
+# <http://blog.jasonantman.com/2012/05/script-to-chart-intervals-between-problem-and-recovery-from-nagiosicinga-log-files/>
 #
 #----------------------------------------------------------------------------
 # This script was based off of one found in the F5 Networks iControl Wiki.

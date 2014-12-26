@@ -15,6 +15,9 @@ bug.
 The canonical version of this script lives at:
 https://github.com/jantman/misc-scripts/blob/master/github_clone_setup.py
 
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
 Requirements
 ============
 * Python 2.7+ (uses subprocess.check_output)

@@ -7,8 +7,7 @@
  *  on behalf of the taxpayers of the State of New Jersey and/or the students of Rutgers University,
  *  The State University of New Jersey.
  *
- * $HeadURL$
- * $LastChangedRevision$
+ * <https://github.com/jantman/misc-scripts/blob/master/rsyslogIsHung.php>
  *
  */
 

@@ -4,10 +4,10 @@
 # Perl script to de/encode F5 BigIp persistence cookies.
 #
 # The latest version of this script can always be obtained from:
-#   <http://svn.jasonantman.com/misc-scripts/bigipcookie.pl> via HTTP ot SVN
+#   <https://github.com/jantman/misc-scripts/blob/master/bigipcookie.pl>
 #
 # Update information and description can be found at:
-#   <http://blog.jasonantman.com/?p=931>
+#   <http://blog.jasonantman.com/2012/02/f5-bigip-manually-changing-session-persistence-cookies-on-the-client-side/>
 #
 # Copyright 2012 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>.
 #
@@ -37,9 +37,6 @@
 # - F5 itself for the formula: <http://support.f5.com/kb/en-us/solutions/public/6000/900/sol6917.html>
 # - Tyler Krpata <http://www.tylerkrpata.com/2009/06/decode-f5-bigip-cookie-in-one-line-of.html>
 #     for the Perl one-liner that this logic is based on.
-#
-# $HeadURL$
-# $LastChangedRevision$
 #
 # Changelog:
 #

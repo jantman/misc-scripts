@@ -3,11 +3,15 @@
 # Simple script to list all records in Linode DNS via API,
 # along with their Domain ID and Record ID
 #
-# Copyright 2013 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
-#
 # This requires the requests and json packages.
 #
+##################
+# Copyright 2013 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+# Free for any use provided that patches are submitted back to me.
 #
+# The latest version of this script can be found at:
+# <https://github.com/jantman/misc-scripts/blob/master/linode_list_records.py>
+##########################################################################################
 
 import sys
 import requests

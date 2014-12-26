@@ -10,7 +10,7 @@
  * Copyright 2010 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
  *
  * The canonical source of the latest version of this script is:
- *  <http://svn.jasonantman.com/misc-scripts/js2phpdoc.php>
+ *  <https://github.com/jantman/misc-scripts/blob/master/js2phpdoc.php>
  *
  * Information on usage and installation can be found at:
  *  <http://blog.jasonantman.com/2010/08/documentation-generation-for-web-apps-php-and-javascript/>
@@ -56,9 +56,6 @@
  *
  * @author jantman <jason@jasonantman.com> <http://www.jasonantman.com>
  * @author rhorber <raphael.horber@gmail.com>
- *
- * $LastChangedRevision$
- * $HeadURL$
  *
  * CHANGELOG:
  *

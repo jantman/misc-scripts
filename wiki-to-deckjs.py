@@ -1,6 +1,16 @@
 #!/usr/bin/env python2
 """
 simple, awful script to change markdown-like (very restricted markup set) markup to deck.js-ready html
+
+##################
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+https://github.com/jantman/misc-scripts/blob/master/wiki-to-deckjs.py
+
+CHANGELOG:
+- initial version
 """
 
 import sys

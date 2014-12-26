@@ -24,8 +24,7 @@
    *
    * The following URL always points to the newest version of this script. If you obtained it from another source, you should
    * check here:
-   * $HeadURL$
-   * $LastChangedRevision$
+   * <https://github.com/jantman/misc-scripts/blob/master/linodeDnsToCsv.php>
    *
    * CHANGELOG:
    * 2011-12-17 Jason Antman <jason@jasonantman.com>:

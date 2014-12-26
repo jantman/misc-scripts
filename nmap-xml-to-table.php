@@ -4,7 +4,7 @@
  * Script to transform multiple nmap XML output files (presumably of the same host/port range with different scan options) into a HTML table
  *
  * The canonical source of the latest version of this script is:
- *  <http://svn.jasonantman.com/misc-scripts/nmap-xml-to-table.php>
+ *  <https://github.com/jantman/misc-scripts/blob/master/nmap-xml-to-table.php>
  *
  * Copyright 2011 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com> all rights reserved.
  *  Distribution and use of this script is unlimited, provided that you leave this notice intact and send any corrections/additions back to me.
@@ -13,8 +13,6 @@
  *
  * USAGE: nmap-xml-to-table.php [xml file] [xml file] [...]
  *
- * $LastChangedRevision$
- * $HeadURL$
  *
  */
 

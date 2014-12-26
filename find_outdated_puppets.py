@@ -3,7 +3,7 @@
 Script to look at a Puppet Dashboard unhidden-nodes.csv and extract the latest report time for each node.
 Optionally, list nodes with runtime BEFORE a string.
 
-USAGE:
+ABANDONED - no longer used or maintained.
 
 """
 import csv

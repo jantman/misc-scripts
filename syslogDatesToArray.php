@@ -13,7 +13,7 @@
  * host, and a full PHP installation with GD, etc. on another (web) server somewhere, better suited to the graphing.
  *
  ********************************************************************************************************************
- * Copyright 2011 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com> All Rights Reserved.
+ * Copyright 2011-2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
  *
  * LICENSE:
  * This script may be used, modified and distributed provided that the following terms are met:
@@ -21,11 +21,12 @@
  * 2) Any and all substantitive changes/feature additions/bug fixes are sent back to me for inclusion in the next version.
  * 3) The below changelog is kept intact and up-to-date.
  ********************************************************************************************************************
- * The canonical source of this script is:
- * $HeadURL$
- * $LastChangedRevision$
+ * The canonical source of the latest version of this script is:
+ * https://github.com/jantman/misc-scripts/blob/master/syslogDatesToArray.php
  ********************************************************************************************************************
  * CHANGELOG:
+ * 2014-12-26 jason@jasonantman.com:
+ *   - update with GitHub URL for script
  * 2011-09-28 jason@jasonantman.com:
  *    - first version of script
  ********************************************************************************************************************

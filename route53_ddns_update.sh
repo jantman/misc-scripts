@@ -1,4 +1,20 @@
 #!/bin/bash
+#################################################
+# Bash script to update Route53 dynamic DNS
+#
+# Assumes you already have cli53 (<https://github.com/barnybug/cli53>)
+# installed and properly configured.
+#
+#################################################
+# Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+# Free for any use provided that patches are submitted back to me.
+#
+# The latest version of this script can be found at:
+# <https://github.com/jantman/misc-scripts/blob/master/route53_ddns_update.sh>
+#
+# CHANGELOG:
+# - initial script
+#################################################
 
 WAN_IP=`wget -O - -U wget/route53_ddns_update.sh/iponly http://whatismyip.jasonantman.com`
 

@@ -4,6 +4,16 @@ Python script to tell what branches differ between two git repos,
 both by existence and head commit.
 
 Reqires GitPython>=0.3.2.RC1
+
+##################
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+<https://github.com/jantman/misc-scripts/blob/master/git_repo_diff.py>
+
+CHANGELOG:
+- initial script
 """
 
 import os

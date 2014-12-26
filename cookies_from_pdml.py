@@ -4,8 +4,11 @@ Script to parse http Cookie header field from WireShark PDML XML.
 
 This is a quick hack. Lots of problems.
 
-By Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
-https://github.com/jantman/misc-scripts/blob/master/cookies_from_pdml.py
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+<https://github.com/jantman/misc-scripts/blob/master/cookies_from_pdml.py>
 """
 
 from lxml import etree

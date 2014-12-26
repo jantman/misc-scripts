@@ -12,6 +12,19 @@ module for option parsing, to the new argparse module. This was only
 introduced in Python 2.7; if you need to run this on an older python,
 you'll likely need to flip back to using optparse. In that case,
 see <https://docs.python.org/2/library/optparse.html>.
+
+Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+CHANGELOG:
+2014-12-25 Jason Antman <jason@jasonantman.com>:
+  - switch to use argparse instead of optparse
+  - use class instead of module functions
+  - add some more examples for those new to Python
+2014-05-30 Jason Antman <jason@jasonantman.com>:
+  - remove superfluous, broken line
+2014-05-07 Jason Antman <jason@jasonantman.com>:
+  - initial version of script
 """
 
 import sys

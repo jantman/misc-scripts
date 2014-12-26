@@ -17,10 +17,11 @@
  * be emailed to the above address.
  *
  * The latest version of this script will always be available at:
- * $HeadURL$
- * $LastChangedRevision$
+ * https://github.com/jantman/misc-scripts/blob/master/wordpress_daily_post.php
  *
  * Changelog:
+ * 2014-12-26 Jason Antman <jason@jasonantman.com>
+ *  - GitHub script URL
  * 2012-09-03 Jason Antman <jason@jasonantman.com> - 1.0
  *  - first version
  */

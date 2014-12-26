@@ -14,8 +14,8 @@
  *                                          
  * USAGE: cmd-wrapper [pre|post]
  *
- * $HeadURL$
- * $LastChangedRevision$
+ * The latest version of this script can be found at:
+ * <https://github.com/jantman/misc-scripts/blob/master/cmd-wrapper.c>
  *                                          
  ********************************************/
 

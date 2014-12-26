@@ -6,6 +6,10 @@ Script to dump all Skype logs from a main.db file to HTML.
 Default output is a directory of HTML files, with an index file and per-chat files.
 
 Copyright 2012 Jason Antman <jason@jasonantman.com> All Rights Reserved.
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+<https://github.com/jantman/misc-scripts/blob/master/dump_skype_logs.py>
 
 Requires Python Modules:
 sqlite3

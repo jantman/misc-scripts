@@ -1,5 +1,4 @@
 #!/usr/bin/perl
-
 #
 # show_dhcp_fixed_ACKs.pl - script to show the most recent DHCP ACKs per IP address for ISC DHCPd,
 #   from a log file. Originally written for Vyatta routers that just show the dynamic leases.
@@ -22,8 +21,7 @@
 #
 # The following URL always points to the newest version of this script. If you obtained it from another source, you should
 # check here:
-# $HeadURL$
-# $LastChangedRevision$
+# <https://github.com/jantman/misc-scripts/blob/master/show_dhcp_fixed_ACKs.pl>
 #
 # CHANGELOG:
 # 2011-12-24 jason@jasonantman.com:

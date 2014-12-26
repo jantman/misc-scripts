@@ -8,8 +8,8 @@
  *  on behalf of the taxpayers of the State of New Jersey and/or the students of Rutgers University,
  *  The State University of New Jersey.
  *
- * $HeadURL$
- * $LastChangedRevision$
+ * The latest version of this script can be found at:
+ * <https://github.com/jantman/misc-scripts/blob/master/collectRsyslogInfo.php>
  *
  ****************************************************************************************************
  * Usage:

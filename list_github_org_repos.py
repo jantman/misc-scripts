@@ -2,6 +2,10 @@
 #
 # Script using PyGithub to list an organization's repos and some info about them.
 #
+# Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+# Free for any use provided that patches are submitted back to me.
+#
+# The latest version of this script can be found at:
 # <https://github.com/jantman/misc-scripts/blob/master/list_github_org_repos.py>
 #
 # Requires PyGithub - `pip install PyGithub` (tested against 1.23.0)
@@ -9,6 +13,9 @@
 #
 # Assumes you have a GitHub API Token, either in ~/.ssh/apikeys.py or
 # in a GITHUB_TOKEN environment variable.
+#
+# CHANGELOG:
+# - initial script
 #
 
 from github import Github

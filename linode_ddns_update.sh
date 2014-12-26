@@ -7,6 +7,10 @@
 # Credit for this script goes to "Guspaz" on the Linode forums, who published it
 # in his post at: <https://forum.linode.com/viewtopic.php?p=53727&sid=481e147062078fe2f9728de24baabc37#p53727>
 #
+##################
+# Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+# Free for any use provided that patches are submitted back to me.
+#
 # The most recent version of this script is available at:
 # <https://github.com/jantman/misc-scripts/blob/master/linode_ddns_update.sh>
 #

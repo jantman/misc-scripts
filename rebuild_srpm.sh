@@ -3,7 +3,9 @@
 # Script to rebuild a SRPM 1:1, useful when you want to build a RHEL/CentOS 6
 # SRPM on a RHEL/CentOS 5 system that doesn't support newer compression (cpio: MD5 sum mismatch)
 #
-# by Jason Antman <jason@jasonantman.com>
+# Copyright 2014 Jason Antman <jason@jasonantman.com>. All Rights Reserved.
+# Free for any use provided that patches are submitted back to me.
+#
 # The latest version of this script will always live at:
 # <https://github.com/jantman/misc-scripts/blob/master/rebuild_srpm.sh>
 #

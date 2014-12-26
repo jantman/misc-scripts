@@ -6,6 +6,18 @@
 #
 # Simple, naive regex matching. Assumes you style your manifests properly.
 #
+##################
+# Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+# Free for any use provided that patches are submitted back to me.
+#
+# The latest version of this script can be found at:
+# <https://github.com/jantman/misc-scripts/blob/master/make_puppet_param_markdown.py>
+#
+# CHANGELOG:
+# 2014-02-06 Jason Antman <jason@jasonantman.com>:
+#   - initial script
+##########################################################################################
+    
 
 import os.path
 import re

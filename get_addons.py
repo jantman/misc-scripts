@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 """
 Update my WoW addons on mac
+
+NOTE: As of December 2014 I no longer use or maintain this script;
+instead, I use the Alpha version of the Curse Client for Mac.
 """
 
 import sys

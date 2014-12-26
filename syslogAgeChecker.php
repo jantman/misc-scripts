@@ -6,19 +6,20 @@
  *
  * This is intended only for those cases where you need something quick and dirty, not too efficient, and just to send email.
  *
- * Copyright 2011 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+ * Copyright 2011-2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
  *
  * You may use and redistribute this script in any way you see fit, provided that the following three terms are met:
  * 1) You keep this entire notice, and all names, email addresses, and URLs, intact.
- * 2) You send any changes/features/bug fixes back to me at the above address.
+ * 2) You send any changes/features/bug fixes back to me at the above address or via a Pull Request.
  * 3) You update the below changelog.
  *
  ******************************************************************************************
  * The canonical source of the latest version of this script is:
- * $HeadURL$
- * $LastChangedRevision$
+ * https://github.com/jantman/misc-scripts/blob/master/syslogAgeChecker.php
  ******************************************************************************************
  * CHANGELOG:
+ * 2014-12-26 jason@jasonantman.com:
+ *   - update with GitHub URL for script
  * 2011-09-28 jason@jasonantman.com:
  *   - initial version
  ******************************************************************************************
