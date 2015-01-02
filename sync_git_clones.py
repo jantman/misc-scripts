@@ -3,15 +3,6 @@
 sync_git_clones.py
 -------------------
 
-NOTICE - 2014-04-26 I got this script to this point, and then found that a known bug in
-GitPython (https://github.com/gitpython-developers/GitPython/issues/28) prevents
-it from fetching *any* repository that has a remote configured with a non-branch,
-non-tag refspec, such as the ones used by GitHub (refs/pull/*/head) to check
-out pull requests. As such, this is unusable to me until this issue is fixed.
-I have enough projects in progress, I can't devote the time to trying to fix
-this issue in GitPython correctly. So, this is going to sit here, partially
-finished, until the issue is fixed.
-
 A script to keep your git clones (in a specified list of directories) in sync
 with origin and optionally upstream, and optionally to keep origin's master
 branch in sync with upstream.
@@ -49,8 +40,14 @@ script ready for python3 once GitPython chooses to support it.
 No, this isn't a real Python package. You should run it from a virtualenv with these
 requirements (feel free to ``pip isntall`` them as seen here):
 
-* GitPython==0.3.2.RC1
+* GitPython>=0.3.2.1
 * githup3.py>=0.8.2 (if using GitHub integration; tested with 0.8.2)
+* pip
+
+_Note:_ Versions of GitPython prior to 0.3.2.1 had a [bug](https://github.com/gitpython-developers/GitPython/issues/28)
+in the parsing of FETCH_INFO which caused it to raise an exception when fetching from
+any repository that has a remote configured with a non-branch, non-tag refspec,
+such as the ones used by GitHub (`refs/pull/*/head`) to check out pull requests.
 
 Configuration
 =============
@@ -244,7 +241,7 @@ def check_versions():
 
     thanks to @qwcode for this simple logic
     """
-    gp_req_str = 'GitPython>=0.3.2.RC1'
+    gp_req_str = 'GitPython>=0.3.2.1'
     gp_req = pkg_resources.Requirement.parse(gp_req_str)
     gp_dist = pkg_resources.get_distribution('GitPython')
     logger.debug("Checking GitPython requirement")
