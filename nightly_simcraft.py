@@ -26,22 +26,8 @@ Configuration
 --------------
 
 `~/.nightly_simcraft/settings.py` is just Python code that will be imported by
-this script. An example follows:
-
-#### BEGIN example ~/.nightly_simcraft/settings.py
-CHARACTERS = [
-  {
-    'realm': 'realname',
-    'character': 'character_name',
-    'email': 'you@domain.com',
-  },
-  {
-    'realm': 'realname',
-    'character': 'character_name',
-    'email': ['you@domain.com', 'someone@domain.com'],
-  },
-]
-#### END example ~/.nightly_simcraft/settings.py
+this script. If it doesn't already exist when this script runs, the script
+will exit telling you about an option to create an example config.
 
 Copyright
 ----------
@@ -62,15 +48,37 @@ Changelog
 import sys
 import argparse
 import logging
+from textwrap import dedent
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 
 
+DEFAULT_CONFIG = '~/.nightly_simcraft/settings.py'
+
+
 class NightlySimcraft:
     """ might as well use a class. It'll make things easier later. """
 
-    def __init__(self, logger=None, dry_run=False, verbose=0):
+    SAMPLE_CONF = """# example nightly_simcraft.py configuration file
+    # all file paths are relative to this file
+    DEFAULT_SIMC = 'default.simc'
+    CHARACTERS = [
+      {
+        'realm': 'realname',
+        'character': 'character_name',
+        'email': 'you@domain.com',
+      },
+      {
+        'realm': 'realname',
+        'character': 'character_name',
+        'email': ['you@domain.com', 'someone@domain.com'],
+        'simc': 'a_different.simc',
+      },
+    ]
+    """
+    
+    def __init__(self, configpath=DEFAULT_CONFIG, logger=None, dry_run=False, verbose=0):
         """ init method, run at class creation """
         # setup a logger; allow an existing one to be passed in to use
         self.logger = logger
@@ -81,7 +89,26 @@ class NightlySimcraft:
         elif verbose > 0:
             self.logger.setLevel(logging.INFO)
         self.dry_run = dry_run
+        self.read_config(configpath)
 
+    def read_config(self, confpath):
+        """ read in config file """
+        confpath = os.path.abspath(os.path.expanduser(confpath))
+        self.logger.debug("Reading configuration from: {c}".format(c=confpath))
+        if not os.path.exists(confpath):
+            self.logger.error("ERROR - configuration file does not exist. Please run with --genconfig to generate an example one.")
+            raise SystemExit(1)
+        raise NotImplementedError("read the config")
+
+    @staticmethod
+    def gen_config(confpath):
+        dname = os.path.dirname(confpath)
+        if not os.path.exists(dname):
+            os.mkdir(dname)
+        conf = textwrap.dedent(SAMPLE_CONF)
+        with open(confpath, 'w') as fh:
+            fh.write(conf)
+        
     def run(self):
         """ do stuff here """
         self.logger.info("info-level log message")
