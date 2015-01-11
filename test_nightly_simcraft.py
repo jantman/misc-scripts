@@ -170,9 +170,32 @@ class Test_NightlySimcraft:
         assert mock_validate.call_args_list == [call()]
         
     def test_genconfig(self):
-        cd = '~/.nightly_simcraft'
-        nightly_simcraft.NightlySimcraft.gen_config(cd)
-        assert 1 == 1
+        cd = '/foo'
+        with nested(
+                patch('nightly_simcraft.os.path.exists'),
+                patch('nightly_simcraft.open', create=True)
+        ) as (mock_pe, mock_open):
+            mock_open.return_value = MagicMock(spec=file)
+            mock_pe.return_value = True
+            nightly_simcraft.NightlySimcraft.gen_config(cd)
+        file_handle = mock_open.return_value.__enter__.return_value
+        assert mock_open.call_args_list == [call('/foo/settings.py', 'w')]
+        assert file_handle.write.call_count == 1
+
+    def test_genconfig_nodir(self):
+        cd = '/foo'
+        with nested(
+                patch('nightly_simcraft.os.path.exists'),
+                patch('nightly_simcraft.os.mkdir'),
+                patch('nightly_simcraft.open', create=True)
+        ) as (mock_pe, mock_mkdir, mock_open):
+            mock_open.return_value = MagicMock(spec=file)
+            mock_pe.return_value = False
+            nightly_simcraft.NightlySimcraft.gen_config(cd)
+        file_handle = mock_open.return_value.__enter__.return_value
+        assert mock_open.call_args_list == [call('/foo/settings.py', 'w')]
+        assert file_handle.write.call_count == 1
+        assert mock_mkdir.call_args_list == [call('/foo')]
 
     def test_validate_config_no_default_simc(self, mock_ns):
         bn, rc, mocklog, s = mock_ns
@@ -237,6 +260,7 @@ class Test_NightlySimcraft:
         assert excinfo.value.code == 1
         assert mocklog.error.call_args_list == [call("ERROR: Settings file must define CHARACTERS list with at least one character")]
 
+    @pytest.mark.skipif(sys.version_info >= (3,3), reason="requires python < 3.3")
     def test_import_from_path_py27(self, mock_ns):
         bn, rc, mocklog, s = mock_ns
         # this is a bit of a hack...
@@ -253,6 +277,7 @@ class Test_NightlySimcraft:
         assert ls_mock.call_args_list == [call('settings', 'foobar')]
         assert call('imported settings module') in mocklog.debug.call_args_list
 
+    @pytest.mark.skipif(sys.version_info < (3,3), reason="requires python3.3")
     def test_import_from_path_py33(self, mock_ns):
         bn, rc, mocklog, s = mock_ns
         settings_mock = Mock()
@@ -263,14 +288,37 @@ class Test_NightlySimcraft:
         sfl_mock.return_value = loader_mock
         machinery_mock.SourceFileLoader = sfl_mock
         importlib_mock = Mock()
-        sys.modules['importlib'] = importlib_mock
+        nightly_simcraft.sys.modules['importlib'] = importlib_mock
         sys.modules['importlib.machinery'] = machinery_mock
+        
         with patch('nightly_simcraft.importlib.machinery', machinery_mock):
             s.import_from_path('foobar')
             assert s.settings == settings_mock
         assert call('importing foobar - <py33') in mocklog.debug.call_args_list
         assert ls_mock.call_args_list == [call('settings', 'foobar')]
         assert call('imported settings module') in mocklog.debug.call_args_list
+
+    def test_validate_character(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        char = {'realm': 'rname', 'character': 'cname'}
+        result = s.validate_character(char)
+        assert result is True
+
+    def test_validate_character_notdict(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        char = 'realm'
+        mocklog.debug.reset_mock()
+        result = s.validate_character(char)
+        assert mocklog.debug.call_args_list == [call('Character is not a dict')]
+        assert result is False
+
+    def test_validate_character_no_realm(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        char = {'character': 'cname'}
+        mocklog.debug.reset_mock()
+        result = s.validate_character(char)
+        assert mocklog.debug.call_args_list == [call('Character is not a dict')]
+        assert result is False
 
 def test_default_confdir():
     assert nightly_simcraft.DEFAULT_CONFDIR == '~/.nightly_simcraft'
