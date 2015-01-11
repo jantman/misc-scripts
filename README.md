@@ -41,6 +41,7 @@ file.
 * __make_puppet_param_markdown.py__ - # Python script to generate MarkDown docblock fragment for all parameters of a Puppet parameterized class or define. Simple, naive regex matching. Assumes you style your manifests properly.
 * __mw2html-auth__ - Produce an HTML version (standalone backup/export) of a MediaWiki site that's behind authentication
 * __nagios_log_problem_interval.pl__ - Chart intervals between problem and recovery from Nagios/Icinga logs
+* __nightly_simcraft.py__ - A Python script to automate running [SimulationCraft](http://simulationcraft.org/) every night only if a character's gear changed, and emailing you the results.
 * __nmap-xml-to-table.php__ - Script to transform multiple nmap XML output files (presumably of the same host/port range with different scan options) into a HTML table
 * __print-cmd.sh__ - Simple script to log environment variables and original command for forced ssh commands
 * __print-cmd-wrapper.c__ - C wrapper like cmd-wrapper.c, but just echoes back the command that was called
