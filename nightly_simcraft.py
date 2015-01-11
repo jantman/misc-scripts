@@ -60,6 +60,7 @@ import os
 import argparse
 import logging
 from textwrap import dedent
+from copy import deepcopy
 
 if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
     import importlib.machinery
@@ -111,6 +112,11 @@ class NightlySimcraft:
         self.logger.debug("connecting to BattleNet API")
         self.bnet = battlenet.Connection()
         self.logger.debug("connected")
+        self.logger.debug("loading character cache")
+        self.character_cache = self.load_character_cache(confdir)
+
+    def load_character_cache(self, confdir):
+        pass
 
     def read_config(self, confdir):
         """ read in config file """
@@ -121,7 +127,7 @@ class NightlySimcraft:
             raise SystemExit(1)
         self.import_from_path(confpath)
         self.validate_config()
-        self.logger.debug("Imported settings. {n} characters, DEFAULT_SIMC={d}".format(n=len(self.settings.CHARACTERS), d=self.settings.DEFAULT_SIMC))
+        self.logger.debug("Imported settings for {n} characters".format(n=len(self.settings.CHARACTERS)))
 
     def validate_config(self):
         # validate config
@@ -195,9 +201,10 @@ class NightlySimcraft:
         :param c_settings: the dict for this character from settings.py
         :type c_settings: dict
         :param c_bnet: BattleNet data for this character
-        :type c_bnet: ???
+        :type c_bnet: battlenet.things.Character
         """
-        pass
+        # we need to have loaded the pickled character info already
+        # then we just compare a bnet dict to the one we pickled
     
     def do_character(self, c_settings, c_bnet):
         """
@@ -206,21 +213,9 @@ class NightlySimcraft:
         :param c_settings: the dict for this character from settings.py
         :type c_settings: dict
         :param c_bnet: BattleNet data for this character
-        :type c_bnet: ???
+        :type c_bnet: battlenet.things.Character
         """
         pass
-        """
-        See:
-        [SimulationCraft - How to Sim your Character - Guides - Wowhead](http://www.wowhead.com/guide=100/simulationcraft-how-to-sim-your-character)
-        [How to Sim Your Toon: SimulationCraft for Dummies - Warlock - Wowhead Forums](http://www.wowhead.com/forums&topic=152437/how-to-sim-your-toon-simulationcraft-for-dummies)
-        [StartersGuide - simulationcraft - A starters guide for Simulationcraft - World of Warcraft DPS Simulator - Google Project Hosting](https://code.google.com/p/simulationcraft/wiki/StartersGuide)
-        [TextualConfigurationInterface - simulationcraft - TCI reference: basics. - World of Warcraft DPS Simulator - Google Project Hosting](https://code.google.com/p/simulationcraft/wiki/TextualConfigurationInterface)
-        [Automation - simulationcraft - TCI reference: Automation Tool. - World of Warcraft DPS Simulator - Google Project Hosting](https://code.google.com/p/simulationcraft/wiki/Automation)
-        [Examples - simulationcraft - Useful pieces of TCI - World of Warcraft DPS Simulator - Google Project Hosting](https://code.google.com/p/simulationcraft/wiki/Examples)
-        [Options - simulationcraft - TCI reference: exhaustive list of settings. - World of Warcraft DPS Simulator - Google Project Hosting](https://code.google.com/p/simulationcraft/wiki/Options)
-        [Output - simulationcraft - TCI reference: output - World of Warcraft DPS Simulator - Google Project Hosting](https://code.google.com/p/simulationcraft/wiki/Output)
-        
-        """
 
     def get_battlenet(self, realm, character):
         """ get a character's info from Battlenet API """
@@ -228,18 +223,15 @@ class NightlySimcraft:
             char = self.bnet.get_character(battlenet.UNITED_STATES, realm, character)
         except battlenet.exceptions.CharacterNotFound:
             self.logger.error("ERROR - Character Not Found - realm='{r}' character='{c}'".format(r=realm, c=character))
-        """
-        >>> dir(chat)
-        ['ALCHEMY', 'ALLIANCE', 'ALL_FIELDS', 'APPEARANCE', 'ARCHAEOLOGY', 'BLACKSMITHING', 'BLOOD_ELF', 'COMPANIONS', 'COOKING', 'DEATH_KNIGHT', 'DRAENEI', 'DRUID', 'DWARF', 'ENCHANTING', 'ENGINEERING', 'FEMALE', 'FIRST_AID', 'FISHING', 'GNOME', 'GOBLIN', 'GUILD', 'HERBALISM', 'HORDE', 'HUMAN', 'HUNTER', 'INSCRIPTION', 'ITEMS', 'JEWELCRATING', 'LEATHERWORKING', 'MAGE', 'MALE', 'MINING', 'MOUNTS', 'NIGHT_ELF', 'ORC', 'PALADIN', 'PETS', 'PRIEST', 'PROFESSIONS', 'QUESTS', 'REPUTATIONS', 'ROGUE', 'SHAMAN', 'STATS', 'Skinning', 'TAILORING', 'TALENTS', 'TAUREN', 'TITLES', 'TROLL', 'UNDEAD', 'WARLOCK', 'WARRIOR', 'WORGEN', '__class__', '__delattr__', '__dict__', '__doc__', '__eq__', '__format__', '__getattribute__', '__hash__', '__init__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_data', '_delete_property_fields', '_fields', '_populate_data', '_refresh_if_not_present', 'achievement_points', 'appearance', 'class_', 'companions', 'connection', 'equipment', 'faction', 'gender', 'get_class_name', 'get_full_class_name', 'get_race_name', 'get_realm_name', 'get_spec_name', 'get_thumbnail_url', 'guild', 'last_modified', 'level', 'mounts', 'name', 'professions', 'race', 'realm', 'refresh', 'region', 'reputations', 'stats', 'talents', 'thumbnail', 'titles', 'to_json']
-                >>> chat.titles
-                [<Title: %s of the Iron Vanguard>]
-                >>> chat.equipment
-                <Equipment>
-                >>> dir(chat.equipment)
-                ['__class__', '__delattr__', '__dict__', '__doc__', '__eq__', '__format__', '__getattribute__', '__getitem__', '__hash__', '__init__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_character', '_data', 'average_item_level', 'average_item_level_equiped', 'back', 'chest', 'feet', 'finger1', 'finger2', 'hands', 'head', 'legs', 'main_hand', 'neck', 'off_hand', 'ranged', 'shirt', 'shoulder', 'tabard', 'to_json', 'trinket1', 'trinket2', 'waist', 'wrist']
-                >>> chat.equipment.__dict__
-                {'trinket2': <Item: Tormented Emblem of Flame>, 'trinket1': <Item: Sandman's Pouch>, 'back': <Item: Drape of Frozen Dreams>, 'feet': <Item: Windshaper Treads>, 'tabard': None, 'shirt': None, 'chest': <Item: Hexweave Robe of the Peerless>, 'legs': <Item: Lightbinder Leggings>, 'main_hand': <Item: Staff of Trials>, 'head': <Item: Crown of Power>, 'ranged': None, '_character': <Character: Jantman@Area 52>, 'wrist': <Item: Bracers of Arcane Mystery>, 'hands': <Item: Windshaper Gloves>, '_data': {u'shoulder': {u'stats': [{u'stat': 32, u'amount': 104}, {u'stat': 5, u'amount': 138}, {u'stat': 36, u'amount': 72}, {u'stat': 7, u'amount': 207}], u'name': u'Twin-Gaze Spaulders', u'tooltipParams': {}, u'armor': 71, u'itemLevel': 640, u'bonusLists': [], u'context': u'raid-finder', u'quality': 4, u'id': 115997, u'icon': u'inv_shoulder_cloth_draenorlfr_c_01'}, u'averageItemLevelEquipped': 623, u'averageItemLevel': 623, u'neck': {u'stats': [{u'stat': 59, u'amount': 41}, {u'stat': 49, u'amount': 46}, {u'stat': 5, u'amount': 66}, {u'stat': 7, u'amount': 99}], u'name': u'Skywatch Adherent Locket', u'tooltipParams': {}, u'armor': 0, u'itemLevel': 592, u'bonusLists': [15], u'context': u'quest-reward', u'quality': 4, u'id': 114951, u'icon': u'inv_misc_necklace_6_0_024'}, u'trinket1': {u'stats': [{u'stat': 5, u'amount': 175}], u'name': u"Sandman's Pouch", u'tooltipParams': {}, u'armor': 0, u'itemLevel': 640, u'bonusLists': [525, 529], u'context': u'trade-skill', u'quality': 4, u'id': 112320, u'icon': u'inv_inscription_trinket_mage'}, u'trinket2': {u'stats': [{u'stat': 5, u'amount': 120}], u'name': u'Tormented Emblem of Flame', u'tooltipParams': {}, u'armor': 0, u'itemLevel': 600, u'bonusLists': [], u'context': u'dungeon-normal', u'quality': 3, u'id': 114367, u'icon': u'inv_jewelry_talisman_11'}, u'finger2': {u'stats': [{u'stat': 32, u'amount': 66}, {u'stat': 5, u'amount': 94}, {u'stat': 36, u'amount': 57}, {u'stat': 7, u'amount': 141}], u'name': u'Diamondglow Circle', u'tooltipParams': {}, u'armor': 0, u'itemLevel': 630, u'bonusLists': [524], u'context': u'dungeon-heroic', u'quality': 3, u'id': 109763, u'icon': u'inv_60dungeon_ring2d'}, u'finger1': {u'stats': [{u'stat': 40, u'amount': 54}, {u'stat': 49, u'amount': 77}, {u'stat': 5, u'amount': 103}, {u'stat': 7, u'amount': 155}], u'name': u'Solium Band of Wisdom', u'tooltipParams': {}, u'armor': 0, u'itemLevel': 640, u'bonusLists': [], u'context': u'quest-reward', u'quality': 4, u'id': 118291, u'icon': u'inv_misc_6oring_purplelv1'}, u'head': {u'stats': [{u'stat': 51, u'amount': 63}, {u'stat': 32, u'amount': 139}, {u'stat': 5, u'amount': 184}, {u'stat': 36, u'amount': 93}, {u'stat': 7, u'amount': 275}], u'name': u'Crown of Power', u'tooltipParams': {}, u'armor': 77, u'itemLevel': 640, u'bonusLists': [], u'context': u'', u'quality': 4, u'id': 118942, u'icon': u'inv_crown_02'}, u'mainHand': {u'stats': [{u'stat': 40, u'amount': 81}, {u'stat': 5, u'amount': 139}, {u'stat': 36, u'amount': 99}, {u'stat': 7, u'amount': 208}, {u'stat': 45, u'amount': 795}], u'name': u'Staff of Trials', u'tooltipParams': {}, u'armor': 0, u'itemLevel': 610, u'weaponInfo': {u'dps': 124.69697, u'damage': {u'max': 494, u'exactMin': 329.0, u'exactMax': 494.0, u'min': 329}, u'weaponSpeed': 3.3}, u'bonusLists': [], u'context': u'quest-reward', u'quality': 3, u'id': 119463, u'icon': u'inv_staff_2h_draenordungeon_c_05'}, u'back': {u'stats': [{u'stat': 49, u'amount': 57}, {u'stat': 32, u'amount': 66}, {u'stat': 5, u'amount': 94}, {u'stat': 7, u'amount': 141}], u'name': u'Drape of Frozen Dreams', u'tooltipParams': {}, u'armor': 44, u'itemLevel': 630, u'bonusLists': [524], u'context': u'dungeon-heroic', u'quality': 3, u'id': 109926, u'icon': u'inv_cape_draenordungeon_c_02_plate'}, u'feet': {u'stats': [{u'stat': 32, u'amount': 70}, {u'stat': 5, u'amount': 97}, {u'stat': 36, u'amount': 57}, {u'stat': 7, u'amount': 146}], u'name': u'Windshaper Treads', u'tooltipParams': {}, u'armor': 51, u'itemLevel': 603, u'bonusLists': [171], u'context': u'quest-reward', u'quality': 3, u'id': 114684, u'icon': u'inv_cloth_draenorquest95_b_01boot'}, u'chest': {u'stats': [{u'stat': 49, u'amount': 131}, {u'stat': 32, u'amount': 107}, {u'stat': 5, u'amount': 184}, {u'stat': 7, u'amount': 275}], u'name': u'Hexweave Robe of the Peerless', u'tooltipParams': {}, u'armor': 94, u'itemLevel': 640, u'bonusLists': [50, 525, 538], u'context': u'trade-skill', u'quality': 4, u'id': 114813, u'icon': u'inv_cloth_draenorcrafted_d_01robe'}, u'wrist': {u'stats': [{u'stat': 32, u'amount': 63}, {u'stat': 5, u'amount': 94}, {u'stat': 36, u'amount': 63}, {u'stat': 7, u'amount': 141}], u'name': u'Bracers of Arcane Mystery', u'tooltipParams': {}, u'armor': 39, u'itemLevel': 630, u'bonusLists': [524], u'context': u'dungeon-heroic', u'quality': 3, u'id': 109864, u'icon': u'inv_cloth_draenordungeon_c_01bracer'}, u'hands': {u'stats': [{u'stat': 32, u'amount': 53}, {u'stat': 40, u'amount': 63}, {u'stat': 5, u'amount': 89}, {u'stat': 7, u'amount': 133}], u'name': u'Windshaper Gloves', u'tooltipParams': {}, u'armor': 41, u'itemLevel': 593, u'bonusLists': [], u'context': u'quest-reward', u'quality': 2, u'id': 114689, u'icon': u'inv_cloth_draenorquest95_b_01glove'}, u'legs': {u'stats': [{u'stat': 49, u'amount': 101}, {u'stat': 32, u'amount': 118}, {u'stat': 5, u'amount': 167}, {u'stat': 7, u'amount': 251}], u'name': u'Lightbinder Leggings', u'tooltipParams': {}, u'armor': 77, u'itemLevel': 630, u'bonusLists': [524], u'context': u'dungeon-heroic', u'quality': 3, u'id': 109807, u'icon': u'inv_cloth_draenordungeon_c_01pant'}, u'waist': {u'stats': [{u'stat': 49, u'amount': 101}, {u'stat': 40, u'amount': 76}, {u'stat': 5, u'amount': 138}, {u'stat': 7, u'amount': 207}], u'name': u'Hexweave Belt of the Harmonious', u'tooltipParams': {}, u'armor': 53, u'itemLevel': 640, u'bonusLists': [213, 525, 537], u'context': u'trade-skill', u'quality': 4, u'id': 114816, u'icon': u'inv_cloth_draenorcrafted_d_01belt'}}, 'waist': <Item: Hexweave Belt of the Harmonious>, 'shoulder': <Item: Twin-Gaze Spaulders>, 'neck': <Item: Skywatch Adherent Locket>, 'finger2': <Item: Diamondglow Circle>, 'average_item_level_equiped': 623, 'finger1': <Item: Solium Band of Wisdom>, 'average_item_level': 623, 'off_hand': None}
-        """
+            return None
+        print(dir(char))
+        return {}
+        d = deepcopy(char.__dict__['_data'])
+        # remove stuff we don't want
+        for i in ['connection', 'achievementPoints', 'lastModified', '_items']:
+            if i in d:
+                del d[i]
+        return d
 
 def parse_args(argv):
     """
