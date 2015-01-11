@@ -13,6 +13,9 @@ introduced in Python 2.7; if you need to run this on an older python,
 you'll likely need to flip back to using optparse. In that case,
 see <https://docs.python.org/2/library/optparse.html>.
 
+For an example of how to write pytest unit tests for this, see:
+<https://github.com/jantman/misc-scripts/blob/master/test_skeleton.py>
+
 Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
@@ -67,9 +70,9 @@ def parse_args(argv):
     """
     p = argparse.ArgumentParser(description='Sample python script skeleton.')
     p.add_argument('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
-                      help="dry-run - don't actually make any changes")
+                   help="dry-run - don't actually make any changes")
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
-                      help='verbose output. specify twice for debug-level output.')
+                   help='verbose output. specify twice for debug-level output.')
 
     args = p.parse_args(argv)
 
