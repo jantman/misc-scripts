@@ -1,0 +1,8 @@
+[run]
+branch = True
+
+[report]
+exclude_lines =
+    # this cant ever be run by py.test, but it just calls one function,
+    # so ignore it
+    if __name__ == .__main__.:
