@@ -8,10 +8,12 @@ characters, and any number of destination email addresses.
 What It Does
 -------------
 
+For each character defined in the configuration file:
+
 - uses [battlenet](https://pypi.python.org/pypi/battlenet/0.2.6) to check your
-  character's gear, and cache it locally (under `~/.nightly_simcraft/`).
-- if your gear has changed, run simc for your character and email the report
-  to a specified address
+  character's gear, and cache it locally (under `~/.nightly_simcraft/`). If your
+  gear has not changed since the last run, skip the character.
+- Generate a new `.simc` file 
 
 Requirements
 -------------
@@ -28,6 +30,16 @@ Configuration
 `~/.nightly_simcraft/settings.py` is just Python code that will be imported by
 this script. If it doesn't already exist when this script runs, the script
 will exit telling you about an option to create an example config.
+
+You'll need at least one `.simc` file to configure the run. That's outside the
+scope of this script. I recommend using the SimulationCraft GUI to configure it
+as you want, and then use the contents of the "Simulate" tab as the simc file
+(place this in the same directory as your configuration file, and update
+settings.py to point at it).
+
+At every run, simc will be run against a copy of the specified simc file,
+with your character's level and gear updated from the Battlenet API. No
+other changes will be made to the file.
 
 Copyright
 ----------
@@ -46,21 +58,30 @@ Changelog
 """
 
 import sys
+import os
 import argparse
 import logging
 from textwrap import dedent
+
+if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
+    import importlib.machinery
+else:
+    import imp
+
+import battlenet
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 
 
-DEFAULT_CONFIG = '~/.nightly_simcraft/settings.py'
+DEFAULT_CONFDIR = '~/.nightly_simcraft'
 
 
 class NightlySimcraft:
     """ might as well use a class. It'll make things easier later. """
 
-    SAMPLE_CONF = """# example nightly_simcraft.py configuration file
+    SAMPLE_CONF = """
+    # example nightly_simcraft.py configuration file
     # all file paths are relative to this file
     DEFAULT_SIMC = 'default.simc'
     CHARACTERS = [
@@ -78,7 +99,7 @@ class NightlySimcraft:
     ]
     """
     
-    def __init__(self, configpath=DEFAULT_CONFIG, logger=None, dry_run=False, verbose=0):
+    def __init__(self, confdir=DEFAULT_CONFDIR, logger=None, dry_run=False, verbose=0):
         """ init method, run at class creation """
         # setup a logger; allow an existing one to be passed in to use
         self.logger = logger
@@ -89,32 +110,89 @@ class NightlySimcraft:
         elif verbose > 0:
             self.logger.setLevel(logging.INFO)
         self.dry_run = dry_run
-        self.read_config(configpath)
+        self.confdir = confdir
+        self.read_config(confdir)
+        self.logger.debug("connecting to BattleNet API")
+        self.bnet = battlenet.Connection()
+        self.logger.debug("connected")
 
-    def read_config(self, confpath):
+    def read_config(self, confdir):
         """ read in config file """
-        confpath = os.path.abspath(os.path.expanduser(confpath))
+        confpath = os.path.abspath(os.path.expanduser(os.path.join(confdir, 'settings.py')))
         self.logger.debug("Reading configuration from: {c}".format(c=confpath))
         if not os.path.exists(confpath):
             self.logger.error("ERROR - configuration file does not exist. Please run with --genconfig to generate an example one.")
             raise SystemExit(1)
-        raise NotImplementedError("read the config")
+        self.import_from_path(confpath)
+        self.validate_config()
+        self.logger.debug("Imported settings. {n} characters, DEFAULT_SIMC={d}".format(n=len(self.settings.CHARACTERS), d=self.settings.DEFAULT_SIMC))
+
+    def validate_config(self):
+        # validate config
+        if not hasattr(self.settings, 'DEFAULT_SIMC'):
+            self.logger.error("ERROR: Settings file must define DEFAULT_SIMC filename (string)")
+            raise SystemExit(1)
+        if type(self.settings.DEFAULT_SIMC) != type(''):
+            self.logger.error("ERROR: Settings file must define DEFAULT_SIMC filename (string)")
+            raise SystemExit(1)
+        if not hasattr(self.settings, 'CHARACTERS'):
+            self.logger.error("ERROR: Settings file must define CHARACTERS list")
+            raise SystemExit(1)
+        if type(self.settings.CHARACTERS) != type([]):
+            self.logger.error("ERROR: Settings file must define CHARACTERS list")
+            raise SystemExit(1)
+        if len(self.settings.CHARACTERS) < 1:
+            self.logger.error("ERROR: Settings file must define CHARACTERS list with at least one character")
+            raise SystemExit(1)
+        # end validate config
+        
+    def import_from_path(self, confpath):
+        """ import a module from a given filesystem path """
+        if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
+            # py3.3+
+            self.logger.debug("importing {c} - py33+".format(c=confpath))
+            loader = importlib.machinery.SourceFileLoader('settings', confpath)
+            self.settings = loader.load_module()
+        else:
+            self.logger.debug("importing {c} - <py33".format(c=confpath))
+            self.settings = imp.load_source('settings', confpath)
+        self.logger.debug("imported settings module")
 
     @staticmethod
-    def gen_config(confpath):
-        dname = os.path.dirname(confpath)
+    def gen_config(confdir):
+        dname = os.path.abspath(os.path.expanduser(confdir))
+        confpath = os.path.join(dname, 'settings.py')
         if not os.path.exists(dname):
             os.mkdir(dname)
-        conf = textwrap.dedent(SAMPLE_CONF)
+        conf = dedent(NightlySimcraft.SAMPLE_CONF)
         with open(confpath, 'w') as fh:
             fh.write(conf)
-        
+
+    def validate_character(self, char):
+        if type(char) != type({}):
+            self.logger.debug("Character is not a dict")
+            return False
+        if 'realm' not in char:
+            self.logger.debug("'realm' not in char dict")
+            return False
+        if 'character' not in char:
+            self.logger.debug("'character' not in char dict")
+            return False
+        return True
+            
     def run(self):
         """ do stuff here """
-        self.logger.info("info-level log message")
-        self.logger.debug("debug-level log message")
-        self.logger.error("error-level log message")
-        print("run.")
+        for char in self.settings.CHARACTERS:
+            cname = '{c}@{r}'.format(c=char['character'], r=char['realm'])
+            self.logger.debug("Doing character: {c}".format(c=cname))
+            if not validate_character(char):
+                self.logger.warning("Character configuration not valid, skipping: {c}".format(c=char))
+                continue
+            bnet_info = self.get_battlenet(char['realm'], char['character'])
+            if bnet_info is None:
+                self.logger.warning("Character {c} not found; skipping.".format(c=cname))
+                continue
+            print("do something")
         """
         See:
         [SimulationCraft - How to Sim your Character - Guides - Wowhead](http://www.wowhead.com/guide=100/simulationcraft-how-to-sim-your-character)
@@ -129,35 +207,14 @@ class NightlySimcraft:
         """
 
     def get_battlenet(self, realm, character):
+        """ get a character's info from Battlenet API """
+        try:
+            char = self.bnet.get_character(battlenet.UNITED_STATES, realm, character)
+        except battlenet.exceptions.CharacterNotFound:
+            self.logger.error("ERROR - Character Not Found - realm='{r}' character='{c}'".format(r=realm, c=character))
         """
-        [GCC 4.9.2] on linux2
-        Type "help", "copyright", "credits" or "license" for more information.
-        >>> from battlent import Connection
-        Traceback (most recent call last):
-              File "<stdin>", line 1, in <module>
-              ImportError: No module named battlent
-              >>> from battlnet import Connection
-              Traceback (most recent call last):
-              File "<stdin>", line 1, in <module>
-              ImportError: No module named battlnet
-              >>> from battlenet import Connection
-              >>> conn = Connection()
-              >>> chat = conn.get_character(battlenet.UNITED_STATES, 'Ares 52', 'Jantman')
-              Traceback (most recent call last):
-              File "<stdin>", line 1, in <module>
-              NameError: name 'battlenet' is not defined
-              >>> import battlenet
-              >>> chat = conn.get_character(battlenet.UNITED_STATES, 'Ares 52', 'Jantman')
-              Traceback (most recent call last):
-              File "<stdin>", line 1, in <module>
-                File "/home/jantman/venvs/foo/lib/python2.7/site-packages/battlenet/connection.py", line 125, in get_character
-                    raise CharacterNotFound
-                battlenet.exceptions.CharacterNotFound
-                >>> chat = conn.get_character(battlenet.UNITED_STATES, 'Area 52', 'Jantman')
-                >>> chat
-                <Character: Jantman@Area 52>
-                >>> dir(chat)
-                ['ALCHEMY', 'ALLIANCE', 'ALL_FIELDS', 'APPEARANCE', 'ARCHAEOLOGY', 'BLACKSMITHING', 'BLOOD_ELF', 'COMPANIONS', 'COOKING', 'DEATH_KNIGHT', 'DRAENEI', 'DRUID', 'DWARF', 'ENCHANTING', 'ENGINEERING', 'FEMALE', 'FIRST_AID', 'FISHING', 'GNOME', 'GOBLIN', 'GUILD', 'HERBALISM', 'HORDE', 'HUMAN', 'HUNTER', 'INSCRIPTION', 'ITEMS', 'JEWELCRATING', 'LEATHERWORKING', 'MAGE', 'MALE', 'MINING', 'MOUNTS', 'NIGHT_ELF', 'ORC', 'PALADIN', 'PETS', 'PRIEST', 'PROFESSIONS', 'QUESTS', 'REPUTATIONS', 'ROGUE', 'SHAMAN', 'STATS', 'Skinning', 'TAILORING', 'TALENTS', 'TAUREN', 'TITLES', 'TROLL', 'UNDEAD', 'WARLOCK', 'WARRIOR', 'WORGEN', '__class__', '__delattr__', '__dict__', '__doc__', '__eq__', '__format__', '__getattribute__', '__hash__', '__init__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_data', '_delete_property_fields', '_fields', '_populate_data', '_refresh_if_not_present', 'achievement_points', 'appearance', 'class_', 'companions', 'connection', 'equipment', 'faction', 'gender', 'get_class_name', 'get_full_class_name', 'get_race_name', 'get_realm_name', 'get_spec_name', 'get_thumbnail_url', 'guild', 'last_modified', 'level', 'mounts', 'name', 'professions', 'race', 'realm', 'refresh', 'region', 'reputations', 'stats', 'talents', 'thumbnail', 'titles', 'to_json']
+        >>> dir(chat)
+        ['ALCHEMY', 'ALLIANCE', 'ALL_FIELDS', 'APPEARANCE', 'ARCHAEOLOGY', 'BLACKSMITHING', 'BLOOD_ELF', 'COMPANIONS', 'COOKING', 'DEATH_KNIGHT', 'DRAENEI', 'DRUID', 'DWARF', 'ENCHANTING', 'ENGINEERING', 'FEMALE', 'FIRST_AID', 'FISHING', 'GNOME', 'GOBLIN', 'GUILD', 'HERBALISM', 'HORDE', 'HUMAN', 'HUNTER', 'INSCRIPTION', 'ITEMS', 'JEWELCRATING', 'LEATHERWORKING', 'MAGE', 'MALE', 'MINING', 'MOUNTS', 'NIGHT_ELF', 'ORC', 'PALADIN', 'PETS', 'PRIEST', 'PROFESSIONS', 'QUESTS', 'REPUTATIONS', 'ROGUE', 'SHAMAN', 'STATS', 'Skinning', 'TAILORING', 'TALENTS', 'TAUREN', 'TITLES', 'TROLL', 'UNDEAD', 'WARLOCK', 'WARRIOR', 'WORGEN', '__class__', '__delattr__', '__dict__', '__doc__', '__eq__', '__format__', '__getattribute__', '__hash__', '__init__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_data', '_delete_property_fields', '_fields', '_populate_data', '_refresh_if_not_present', 'achievement_points', 'appearance', 'class_', 'companions', 'connection', 'equipment', 'faction', 'gender', 'get_class_name', 'get_full_class_name', 'get_race_name', 'get_realm_name', 'get_spec_name', 'get_thumbnail_url', 'guild', 'last_modified', 'level', 'mounts', 'name', 'professions', 'race', 'realm', 'refresh', 'region', 'reputations', 'stats', 'talents', 'thumbnail', 'titles', 'to_json']
                 >>> chat.titles
                 [<Title: %s of the Iron Vanguard>]
                 >>> chat.equipment
@@ -177,9 +234,13 @@ def parse_args(argv):
     """
     p = argparse.ArgumentParser(description='Sample python script skeleton.')
     p.add_argument('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
-                      help="dry-run - don't actually make any changes")
+                   help="dry-run - don't send email, just say what would be sent")
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
-                      help='verbose output. specify twice for debug-level output.')
+                   help='verbose output. specify twice for debug-level output.')
+    p.add_argument('-c', '--configdir', dest='confdir', action='store', type=str, default=DEFAULT_CONFDIR,
+                   help='configuration directory (default: {c})'.format(c=DEFAULT_CONFDIR))
+    p.add_argument('--genconfig', dest='genconfig', action='store_true', default=False,
+                   help='generate a sample configuration file at configdir/settings.py')
 
     args = p.parse_args(argv)
 
@@ -187,5 +248,9 @@ def parse_args(argv):
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    script = SimpleScript(dry_run=args.dry_run, verbose=args.verbose)
+    if args.genconfig:
+        NightlySimcraft.gen_config(args.confdir)
+        print("Configuration file generated at: {c}".format(c=os.path.join(os.path.abspath(os.path.expanduser(args.confdir)), 'settings.py')))
+        raise SystemExit()
+    script = NightlySimcraft(dry_run=args.dry_run, verbose=args.verbose, confdir=args.confdir)
     script.run()

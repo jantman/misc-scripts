@@ -3,6 +3,7 @@ branch = True
 
 [report]
 exclude_lines =
-    # this cant ever be run by py.test, but it just calls one function,
-    # so ignore it
+    # don't complain if non-runnable code isn't run:
     if __name__ == .__main__.:
+    if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
+    import importlib.machinery
