@@ -13,7 +13,8 @@ For each character defined in the configuration file:
 - uses [battlenet](https://pypi.python.org/pypi/battlenet/0.2.6) to check your
   character's gear, and cache it locally (under `~/.nightly_simcraft/`). If your
   gear has not changed since the last run, skip the character.
-- Generate a new `.simc` file 
+- Generate a new `.simc` file for the character, using current armory information
+  and any options you specified.
 
 Requirements
 -------------
@@ -31,15 +32,12 @@ Configuration
 this script. If it doesn't already exist when this script runs, the script
 will exit telling you about an option to create an example config.
 
-You'll need at least one `.simc` file to configure the run. That's outside the
-scope of this script. I recommend using the SimulationCraft GUI to configure it
-as you want, and then use the contents of the "Simulate" tab as the simc file
-(place this in the same directory as your configuration file, and update
-settings.py to point at it).
+By default, this uses SimulationCraft's default settings for your character
+(i.e. what you get when you do an Armory import, in either the command line
+or GUI interfaces). If you need further customization.... TBD.
 
-At every run, simc will be run against a copy of the specified simc file,
-with your character's level and gear updated from the Battlenet API. No
-other changes will be made to the file.
+The simc file used for each character, as well as the final output, will be
+cached on disk.
 
 Copyright
 ----------
@@ -83,18 +81,16 @@ class NightlySimcraft:
     SAMPLE_CONF = """
     # example nightly_simcraft.py configuration file
     # all file paths are relative to this file
-    DEFAULT_SIMC = 'default.simc'
     CHARACTERS = [
       {
         'realm': 'realname',
-        'character': 'character_name',
+        'name': 'character_name',
         'email': 'you@domain.com',
       },
       {
         'realm': 'realname',
-        'character': 'character_name',
+        'name': 'character_name',
         'email': ['you@domain.com', 'someone@domain.com'],
-        'simc': 'a_different.simc',
       },
     ]
     """
@@ -129,12 +125,6 @@ class NightlySimcraft:
 
     def validate_config(self):
         # validate config
-        if not hasattr(self.settings, 'DEFAULT_SIMC'):
-            self.logger.error("ERROR: Settings file must define DEFAULT_SIMC filename (string)")
-            raise SystemExit(1)
-        if type(self.settings.DEFAULT_SIMC) != type(''):
-            self.logger.error("ERROR: Settings file must define DEFAULT_SIMC filename (string)")
-            raise SystemExit(1)
         if not hasattr(self.settings, 'CHARACTERS'):
             self.logger.error("ERROR: Settings file must define CHARACTERS list")
             raise SystemExit(1)
@@ -175,24 +165,50 @@ class NightlySimcraft:
         if 'realm' not in char:
             self.logger.debug("'realm' not in char dict")
             return False
-        if 'character' not in char:
-            self.logger.debug("'character' not in char dict")
+        if 'name' not in char:
+            self.logger.debug("'name' not in char dict")
             return False
         return True
             
     def run(self):
         """ do stuff here """
         for char in self.settings.CHARACTERS:
-            cname = '{c}@{r}'.format(c=char['character'], r=char['realm'])
+            cname = '{c}@{r}'.format(c=char['name'], r=char['realm'])
             self.logger.debug("Doing character: {c}".format(c=cname))
-            if not validate_character(char):
-                self.logger.warning("Character configuration not valid, skipping: {c}".format(c=char))
+            if not self.validate_character(char):
+                self.logger.warning("Character configuration not valid, skipping: {c}".format(c=cname))
                 continue
-            bnet_info = self.get_battlenet(char['realm'], char['character'])
+            bnet_info = self.get_battlenet(char['realm'], char['name'])
             if bnet_info is None:
-                self.logger.warning("Character {c} not found; skipping.".format(c=cname))
+                self.logger.warning("Character {c} not found on battlenet; skipping.".format(c=cname))
                 continue
-            print("do something")
+            if self.character_has_changes(char, bnet_info):
+                self.do_character(char)
+            else:
+                self.logger.info("Character {c} has no changes, skipping.".format(c=cname))
+        self.logger.info("Done with all characters.")
+
+    def character_has_changes(self, c_settings, c_bnet):
+        """
+        Return True if character has changed since last run, False otherwise.
+
+        :param c_settings: the dict for this character from settings.py
+        :type c_settings: dict
+        :param c_bnet: BattleNet data for this character
+        :type c_bnet: ???
+        """
+        pass
+    
+    def do_character(self, c_settings, c_bnet):
+        """
+        Do the actual simc run for this character
+
+        :param c_settings: the dict for this character from settings.py
+        :type c_settings: dict
+        :param c_bnet: BattleNet data for this character
+        :type c_bnet: ???
+        """
+        pass
         """
         See:
         [SimulationCraft - How to Sim your Character - Guides - Wowhead](http://www.wowhead.com/guide=100/simulationcraft-how-to-sim-your-character)

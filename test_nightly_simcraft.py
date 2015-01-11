@@ -197,37 +197,6 @@ class Test_NightlySimcraft:
         assert file_handle.write.call_count == 1
         assert mock_mkdir.call_args_list == [call('/foo')]
 
-    def test_validate_config_no_default_simc(self, mock_ns):
-        bn, rc, mocklog, s = mock_ns
-        mock_settings = Container()
-        setattr(mock_settings, 'CHARACTERS', [
-            {'character': 'foo',
-             'realm': 'foorealm'},
-            {'character': 'bar',
-             'realm': 'barrealm'},
-        ])
-        setattr(s, 'settings', mock_settings)
-        with pytest.raises(SystemExit) as excinfo:
-            res = s.validate_config()
-        assert excinfo.value.code == 1
-        assert mocklog.error.call_args_list == [call("ERROR: Settings file must define DEFAULT_SIMC filename (string)")]
-
-    def test_validate_config_default_simc_notstring(self, mock_ns):
-        bn, rc, mocklog, s = mock_ns
-        mock_settings = Container()
-        setattr(mock_settings, 'DEFAULT_SIMC', [])
-        setattr(mock_settings, 'CHARACTERS', [
-            {'character': 'foo',
-             'realm': 'foorealm'},
-            {'character': 'bar',
-             'realm': 'barrealm'},
-        ])
-        setattr(s, 'settings', mock_settings)
-        with pytest.raises(SystemExit) as excinfo:
-            res = s.validate_config()
-        assert excinfo.value.code == 1
-        assert mocklog.error.call_args_list == [call("ERROR: Settings file must define DEFAULT_SIMC filename (string)")]
-
     def test_validate_config_no_characters(self, mock_ns):
         bn, rc, mocklog, s = mock_ns
         mock_settings = Container()
@@ -300,7 +269,7 @@ class Test_NightlySimcraft:
 
     def test_validate_character(self, mock_ns):
         bn, rc, mocklog, s = mock_ns
-        char = {'realm': 'rname', 'character': 'cname'}
+        char = {'realm': 'rname', 'name': 'cname'}
         result = s.validate_character(char)
         assert result is True
 
@@ -314,11 +283,113 @@ class Test_NightlySimcraft:
 
     def test_validate_character_no_realm(self, mock_ns):
         bn, rc, mocklog, s = mock_ns
-        char = {'character': 'cname'}
+        char = {'name': 'cname'}
         mocklog.debug.reset_mock()
         result = s.validate_character(char)
-        assert mocklog.debug.call_args_list == [call('Character is not a dict')]
+        assert mocklog.debug.call_args_list == [call("'realm' not in char dict")]
         assert result is False
+
+    def test_validate_character_no_char(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        char = {'realm': 'rname'}
+        mocklog.debug.reset_mock()
+        result = s.validate_character(char)
+        assert mocklog.debug.call_args_list == [call("'name' not in char dict")]
+        assert result is False
+
+    def test_run(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        chars = [{'name': 'nameone', 'realm': 'realmone', 'email': 'foo@example.com'}]
+        s_container = Container()
+        setattr(s_container, 'CHARACTERS', chars)
+        setattr(s, 'settings', s_container)
+        mocklog.debug.reset_mock()
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.validate_character'),
+                patch('nightly_simcraft.NightlySimcraft.get_battlenet'),
+                patch('nightly_simcraft.NightlySimcraft.do_character'),
+                patch('nightly_simcraft.NightlySimcraft.character_has_changes'),
+        ) as (mock_validate, mock_get_bnet, mock_do_char, mock_chc):
+            mock_chc.return_value = True
+            mock_validate.return_value = True
+            mock_get_bnet.return_value = {}
+            s.run()
+        assert mocklog.debug.call_args_list == [call("Doing character: nameone@realmone")]
+        assert mock_validate.call_args_list == [call(chars[0])]
+        assert mock_get_bnet.call_args_list == [call('realmone', 'nameone')]
+        assert mock_do_char.call_args_list == [call(chars[0])]
+        assert mock_chc.call_args_list == [call(chars[0], {})]
+
+    def test_run_invalid_character(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        chars = [{'name': 'nameone', 'realm': 'realmone', 'email': 'foo@example.com'}]
+        s_container = Container()
+        setattr(s_container, 'CHARACTERS', chars)
+        setattr(s, 'settings', s_container)
+        mocklog.debug.reset_mock()
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.validate_character'),
+                patch('nightly_simcraft.NightlySimcraft.get_battlenet'),
+                patch('nightly_simcraft.NightlySimcraft.do_character'),
+                patch('nightly_simcraft.NightlySimcraft.character_has_changes'),
+        ) as (mock_validate, mock_get_bnet, mock_do_char, mock_chc):
+            mock_chc.return_value = True
+            mock_validate.return_value = False
+            mock_get_bnet.return_value = {}
+            s.run()
+        assert mocklog.debug.call_args_list == [call("Doing character: nameone@realmone")]
+        assert mock_validate.call_args_list == [call(chars[0])]
+        assert mock_get_bnet.call_args_list == []
+        assert mocklog.warning.call_args_list == [call("Character configuration not valid, skipping: nameone@realmone")]
+        assert mock_do_char.call_args_list == []
+        assert mock_chc.call_args_list == []
+
+    def test_run_no_battlenet(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        chars = [{'name': 'nameone', 'realm': 'realmone', 'email': 'foo@example.com'}]
+        s_container = Container()
+        setattr(s_container, 'CHARACTERS', chars)
+        setattr(s, 'settings', s_container)
+        mocklog.debug.reset_mock()
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.validate_character'),
+                patch('nightly_simcraft.NightlySimcraft.get_battlenet'),
+                patch('nightly_simcraft.NightlySimcraft.do_character'),
+                patch('nightly_simcraft.NightlySimcraft.character_has_changes'),
+        ) as (mock_validate, mock_get_bnet, mock_do_char, mock_chc):
+            mock_validate.return_value = True
+            mock_get_bnet.return_value = None
+            mock_chc.return_value = True
+            s.run()
+        assert mocklog.debug.call_args_list == [call("Doing character: nameone@realmone")]
+        assert mock_validate.call_args_list == [call(chars[0])]
+        assert mock_get_bnet.call_args_list == [call('realmone', 'nameone')]
+        assert mocklog.warning.call_args_list == [call("Character nameone@realmone not found on battlenet; skipping.")]
+        assert mock_do_char.call_args_list == []
+        assert mock_chc.call_args_list == []
+
+    def test_run_not_updated(self, mock_ns):
+        bn, rc, mocklog, s = mock_ns
+        chars = [{'name': 'nameone', 'realm': 'realmone', 'email': 'foo@example.com'}]
+        s_container = Container()
+        setattr(s_container, 'CHARACTERS', chars)
+        setattr(s, 'settings', s_container)
+        mocklog.debug.reset_mock()
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.validate_character'),
+                patch('nightly_simcraft.NightlySimcraft.get_battlenet'),
+                patch('nightly_simcraft.NightlySimcraft.do_character'),
+                patch('nightly_simcraft.NightlySimcraft.character_has_changes'),
+        ) as (mock_validate, mock_get_bnet, mock_do_char, mock_chc):
+            mock_chc.return_value = False
+            mock_validate.return_value = True
+            mock_get_bnet.return_value = {}
+            s.run()
+        assert mocklog.debug.call_args_list == [call("Doing character: nameone@realmone")]
+        assert mock_validate.call_args_list == [call(chars[0])]
+        assert mock_get_bnet.call_args_list == [call('realmone', 'nameone')]
+        assert mock_do_char.call_args_list == []
+        assert mock_chc.call_args_list == [call(chars[0], {})]
 
 def test_default_confdir():
     assert nightly_simcraft.DEFAULT_CONFDIR == '~/.nightly_simcraft'
