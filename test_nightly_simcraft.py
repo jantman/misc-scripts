@@ -475,15 +475,16 @@ class Test_NightlySimcraft:
         bn, rc, mocklog, s, conn, lcc = mock_ns
         pkl_content = {"foo": "bar", "baz": 3}
         pkl_data = b'\x80\x03}q\x00(X\x03\x00\x00\x00fooq\x01X\x03\x00\x00\x00barq\x02X\x03\x00\x00\x00bazq\x03K\x03u.'
-        mocko = mock_open(read_data=pkl_data)
         with nested(
                 patch('nightly_simcraft.os.path.exists'),
-                patch('nightly_simcraft.open', mocko, create=True),
-        ) as (mock_fexist, m):
+                patch('nightly_simcraft.open', create=True),
+        ) as (mock_fexist, mocko):
             mock_fexist.return_value = True
             #mocko.read.return_value = pkl_data
+            mocko.return_value = MagicMock(spec=file)
+            mocko.return_value.__enter__.read.return_value = pkl_data
             res = s.load_character_cache('/foo')
-        assert mocko.mock_calls == []
+        #assert mocko.mock_calls == []
         assert mock_fexist.call_args_list == [call('/foo/characters.pkl')]
         assert res == pkl_content
 

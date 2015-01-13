@@ -129,6 +129,7 @@ class NightlySimcraft:
             raw = fh.read()
         data = pickle.loads(raw)
         return data
+        return {}
 
     def write_character_cache(self):
         pklpath = os.path.join(confdir, 'characters.pkl')
