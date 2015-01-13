@@ -61,6 +61,10 @@ import argparse
 import logging
 from textwrap import dedent
 from copy import deepcopy
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
     import importlib.machinery
@@ -116,7 +120,20 @@ class NightlySimcraft:
         self.character_cache = self.load_character_cache(confdir)
 
     def load_character_cache(self, confdir):
-        pass
+        pklpath = os.path.join(confdir, 'characters.pkl')
+        if not os.path.exists(pklpath):
+            return {}
+        # this is really just like this to aid testing;
+        # see http://bugs.python.org/issue23004
+        with open(pklpath, 'rb') as fh:
+            raw = fh.read()
+        data = pickle.loads(raw)
+        return data
+
+    def write_character_cache(self):
+        pklpath = os.path.join(confdir, 'characters.pkl')
+        with open(pklpath, 'wb') as fh:
+            pickle.dump(self.character_cache, fh)
 
     def read_config(self, confdir):
         """ read in config file """
@@ -188,23 +205,29 @@ class NightlySimcraft:
             if bnet_info is None:
                 self.logger.warning("Character {c} not found on battlenet; skipping.".format(c=cname))
                 continue
-            if self.character_has_changes(char, bnet_info):
+            if self.character_has_changes(cname, bnet_info):
                 self.do_character(char)
             else:
                 self.logger.info("Character {c} has no changes, skipping.".format(c=cname))
         self.logger.info("Done with all characters.")
 
-    def character_has_changes(self, c_settings, c_bnet):
+    def character_has_changes(self, c_name_realm, c_bnet):
         """
-        Return True if character has changed since last run, False otherwise.
+        Test if a chracter has changed since the last run.
+        If it does not have changes, return None.
+        If it does have changes, return a string human-readable representation
+        of those changes.
 
-        :param c_settings: the dict for this character from settings.py
-        :type c_settings: dict
+        :param c_name_realm: name@realm character identifier
+        :type c_name_realm: string
         :param c_bnet: BattleNet data for this character
         :type c_bnet: battlenet.things.Character
+        :rtype: None or String
         """
-        # we need to have loaded the pickled character info already
-        # then we just compare a bnet dict to the one we pickled
+        if c_name_realm not in self.character_cache:
+            return "Character not in cache (has not been seen before)."
+        c_old = self.character_cache[c_name_realm]
+        raise NotImplemetedError("")
     
     def do_character(self, c_settings, c_bnet):
         """
@@ -224,13 +247,33 @@ class NightlySimcraft:
         except battlenet.exceptions.CharacterNotFound:
             self.logger.error("ERROR - Character Not Found - realm='{r}' character='{c}'".format(r=realm, c=character))
             return None
-        print(dir(char))
-        return {}
+        self.logger.debug("got character from battlenet; getting further information")
+        # get all of the info we need
+        char.appearance
+        char.equipment
+        char.level
+        char.professions
+        char.faction
+        # these seem buggy
+        try:
+            char.stats
+        except:
+            pass
+        try:
+            char.talents
+        except:
+            pass
+        # copy the dict
         d = deepcopy(char.__dict__['_data'])
         # remove stuff we don't want
-        for i in ['connection', 'achievementPoints', 'lastModified', '_items']:
+        for i in ['connection', 'achievementPoints', 'lastModified', '_items', 'achievement_points']:
             if i in d:
                 del d[i]
+        for t in ['primary', 'secondary']:
+            for i in d['professions'][t]:
+                if 'recipes' in i:
+                    del i['recipes']
+        self.logger.debug("cleaned up character data")
         return d
 
 def parse_args(argv):
