@@ -466,45 +466,73 @@ class Test_NightlySimcraft:
                 patch('nightly_simcraft.open', mocko, create=True),
         ) as (mock_fexist, m):
             mock_fexist.return_value = False
-            res = s.load_character_cache('/foo')
+            res = s.load_character_cache()
         assert mocko.mock_calls == []
-        assert mock_fexist.call_args_list == [call('/foo/characters.pkl')]
+        assert mock_fexist.call_args_list == [call('~/.nightly_simcraft/characters.pkl')]
         assert res == {}
 
     def test_load_char_cache(self, mock_ns):
         bn, rc, mocklog, s, conn, lcc = mock_ns
-        pkl_content = {"foo": "bar", "baz": 3}
-        pkl_data = b'\x80\x03}q\x00(X\x03\x00\x00\x00fooq\x01X\x03\x00\x00\x00barq\x02X\x03\x00\x00\x00bazq\x03K\x03u.'
         with nested(
                 patch('nightly_simcraft.os.path.exists'),
                 patch('nightly_simcraft.open', create=True),
-        ) as (mock_fexist, mocko):
+                patch('nightly_simcraft.pickle.load')
+        ) as (mock_fexist, mocko, mock_pkl):
             mock_fexist.return_value = True
-            #mocko.read.return_value = pkl_data
-            mocko.return_value = MagicMock(spec=file)
-            mocko.return_value.__enter__.read.return_value = pkl_data
-            res = s.load_character_cache('/foo')
-        #assert mocko.mock_calls == []
-        assert mock_fexist.call_args_list == [call('/foo/characters.pkl')]
-        assert res == pkl_content
+            mocko.return_value = 'filecontents'
+            mock_pkl.return_value = 'unpickled'
+            res = s.load_character_cache()
+        assert mocko.mock_calls == [call('~/.nightly_simcraft/characters.pkl', 'rb')]
+        assert mock_pkl.mock_calls == [call('filecontents')]
+        assert mock_fexist.call_args_list == [call('~/.nightly_simcraft/characters.pkl')]
+        assert res == 'unpickled'
 
-    # @TODO enable this
-    def DONOTRUNtest_char_has_changes_true(self, mock_ns, char_data):
+    def test_write_char_cache(self, mock_ns):
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        cache_content = {"foo": "bar", "baz": 3}
+        openmock = MagicMock()
+        with nested(
+                patch('nightly_simcraft.open', create=True),
+                patch('nightly_simcraft.pickle.dump')
+        ) as (mocko, mock_pkl):
+            mocko.return_value = openmock
+            s.character_cache = deepcopy(cache_content)
+            s.write_character_cache()
+        assert mocko.mock_calls == [call('~/.nightly_simcraft/characters.pkl', 'wb'),
+                                    call().__enter__(),
+                                    call().__exit__(None, None, None)]
+        assert mock_pkl.mock_calls == [call(cache_content, openmock.__enter__())]
+
+    def test_char_has_changes_true(self, mock_ns, char_data):
         bn, rc, mocklog, s, conn, lcc = mock_ns
         orig_data = char_data
+        cname = char_data['name'] + '@' + char_data['realm']
+        ccache = {cname: orig_data}
         new_data = deepcopy(orig_data)
         new_data['items']['shoulder'] = {u'stats': [{u'stat': 59, u'amount': 60}, {u'stat': 32, u'amount': 80}, {u'stat': 5, u'amount': 109}, {u'stat': 7, u'amount': 163}], u'name': u'Mantle of Hooded Nightmares of the Savage', u'tooltipParams': {}, u'armor': 60, u'quality': 3, u'itemLevel': 615, u'context': u'dungeon-normal', u'bonusLists': [83], u'id': 114395, u'icon': u'inv_cloth_draenordungeon_c_01shoulder'}
-        result = s.character_has_changes(orig_data, new_data)
+        s.character_cache = ccache
+        result = s.character_has_changes(cname, new_data)
         assert result == {}
 
-    # @TODO enable this
-    def DONOTRUNtest_char_has_changes_false(self, mock_ns, char_data):
+    def test_char_has_changes_false(self, mock_ns, char_data):
         bn, rc, mocklog, s, conn, lcc = mock_ns
         orig_data = char_data
-        cname = '{c}@{r}'.format(c=orig_data['name'], r=orig_data['realm'])
+        cname = char_data['name'] + '@' + char_data['realm']
+        ccache = {cname: orig_data}
         new_data = deepcopy(orig_data)
+        s.character_cache = ccache
         result = s.character_has_changes(cname, new_data)
         assert result is None
+
+    def test_char_has_changes_new(self, mock_ns, char_data):
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        orig_data = char_data
+        cname = char_data['name'] + '@' + char_data['realm']
+        ccache = {}
+        new_data = deepcopy(orig_data)
+        s.character_cache = ccache
+        result = s.character_has_changes(cname, new_data)
+        assert result == "Character not in cache (has not been seen before)."
 
     # @TODO enable this
     def DONOTRUNtest_do_character(self):

@@ -117,22 +117,17 @@ class NightlySimcraft:
         self.bnet = battlenet.Connection()
         self.logger.debug("connected")
         self.logger.debug("loading character cache")
-        self.character_cache = self.load_character_cache(confdir)
+        self.character_cache = self.load_character_cache()
 
-    def load_character_cache(self, confdir):
-        pklpath = os.path.join(confdir, 'characters.pkl')
+    def load_character_cache(self):
+        pklpath = os.path.join(self.confdir, 'characters.pkl')
         if not os.path.exists(pklpath):
             return {}
-        # this is really just like this to aid testing;
-        # see http://bugs.python.org/issue23004
-        with open(pklpath, 'rb') as fh:
-            raw = fh.read()
-        data = pickle.loads(raw)
+        data = pickle.load(open(pklpath, 'rb'))
         return data
-        return {}
 
     def write_character_cache(self):
-        pklpath = os.path.join(confdir, 'characters.pkl')
+        pklpath = os.path.join(self.confdir, 'characters.pkl')
         with open(pklpath, 'wb') as fh:
             pickle.dump(self.character_cache, fh)
 
