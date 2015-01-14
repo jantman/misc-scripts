@@ -40,6 +40,9 @@ or GUI interfaces). If you need further customization.... TBD.
 The simc file used for each character, as well as the final output, will be
 cached on disk.
 
+If simc isn't installed at /usr/bin/simc on your system, set the path in the
+configuration file.
+
 Copyright
 ----------
 
@@ -60,6 +63,8 @@ import sys
 import os
 import argparse
 import logging
+import subprocess
+import datetime
 from textwrap import dedent
 from copy import deepcopy
 try:
@@ -88,6 +93,7 @@ class NightlySimcraft:
     SAMPLE_CONF = """
     # example nightly_simcraft.py configuration file
     # all file paths are relative to this file
+    SIMC_PATH = '/usr/bin/simc'
     CHARACTERS = [
       {
         'realm': 'realname',
@@ -203,8 +209,9 @@ class NightlySimcraft:
             if bnet_info is None:
                 self.logger.warning("Character {c} not found on battlenet; skipping.".format(c=cname))
                 continue
-            if self.character_has_changes(cname, bnet_info):
-                self.do_character(char)
+            changes = self.character_has_changes(cname, bnet_info)
+            if changes is not None:
+                self.do_character(cname, char, changes)
             else:
                 self.logger.info("Character {c} has no changes, skipping.".format(c=cname))
         self.logger.info("Done with all characters.")
@@ -258,17 +265,73 @@ class NightlySimcraft:
         s = s.strip()
         return s
     
-    def do_character(self, c_settings, c_bnet):
+    def do_character(self, c_name, c_settings, c_diff):
         """
         Do the actual simc run for this character
 
+        :param c_name: character name in name@realm format
+        :type c_name: string
         :param c_settings: the dict for this character from settings.py
         :type c_settings: dict
-        :param c_bnet: BattleNet data for this character
-        :type c_bnet: battlenet.things.Character
+        :param c_diff: the textual diff of character changes that caused this run
+        :type c_diff: string
         """
-        
+        if not os.path.exists(self.settings.SIMC_PATH):
+            self.logger.error("ERROR: simc path {p} does not exist".format(p=self.settings.SIMC_PATH))
+            return
+        simc_file = os.path.join(self.confdir, '{c}.simc'.format(c=c_name))
+        html_file = os.path.join(self.confdir, '{c}.html'.format(c=c_name))
+        with open(simc_file, 'w') as fh:
+            fh.write('"armory=us,{realm},{char}"\n'.format(realm=c_settings['realm'],
+                                                           char=c_settings['name']))
+            fh.write("calculate_scale_factors=1\n")
+            fh.write("html={cn}.html".format(cn=c_name))
+        os.chdir(self.confdir)
+        start = self.now()
+        try:
+            res = subprocess.check_output([self.settings.SIMC_PATH,
+                                           simc_file],
+                                          stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as er:
+            self.logger.error("Error running simc!")
+            self.logger.exception(er)
+            return
+        end = self.now()
+        if not os.path.exists(html_file):
+            self.logger.error("ERROR: simc finished but HTML file not found on disk.")
+            return
+        self.send_char_email(c_name,
+                             c_settings,
+                             c_diff,
+                             html_file,
+                             (end - start),
+                             res)
 
+    def send_char_email(self, c_name, c_settings, c_diff, html_path, duration, output):
+        """
+        Send emails about the simc run
+
+        :param c_name: character name in name@realm format
+        :type c_name: string
+        :param c_settings: the dict for this character from settings.py
+        :type c_settings: dict
+        :param c_diff: the textual diff of character changes that caused this run
+        :type c_diff: string
+        :param html_path: path to the simc HTML output
+        :type html_path: string
+        :param duration: duration of simc run
+        :type duration: datetime.timedelta
+        :param output: output from simc command
+        :type output: string
+        """
+        pass
+
+    def now(self):
+        """
+        Helper function to make unit tests easier - return datetime.now()
+        """
+        return datetime.datetime.now()
+    
     def get_battlenet(self, realm, character):
         """ get a character's info from Battlenet API """
         try:
