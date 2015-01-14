@@ -7,3 +7,4 @@ exclude_lines =
     if __name__ == .__main__.:
     if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
     import importlib.machinery
+    except ImportError:
