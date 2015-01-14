@@ -511,8 +511,39 @@ class Test_NightlySimcraft:
         new_data = deepcopy(orig_data)
         new_data['items']['shoulder'] = {u'stats': [{u'stat': 59, u'amount': 60}, {u'stat': 32, u'amount': 80}, {u'stat': 5, u'amount': 109}, {u'stat': 7, u'amount': 163}], u'name': u'Mantle of Hooded Nightmares of the Savage', u'tooltipParams': {}, u'armor': 60, u'quality': 3, u'itemLevel': 615, u'context': u'dungeon-normal', u'bonusLists': [83], u'id': 114395, u'icon': u'inv_cloth_draenordungeon_c_01shoulder'}
         s.character_cache = ccache
-        result = s.character_has_changes(cname, new_data)
-        assert result == {}
+        with patch('nightly_simcraft.NightlySimcraft.character_diff') as mock_char_diff:
+            mock_char_diff.return_value = 'foobar'
+            result = s.character_has_changes(cname, new_data)
+        assert result == 'foobar'
+        assert mock_char_diff.call_args_list == [call(orig_data, new_data)]
+
+    def test_character_diff_item(self, mock_ns, char_data):
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        cname = char_data['name'] + '@' + char_data['realm']
+        ccache = {cname: char_data}
+        new_data = deepcopy(char_data)
+        new_data['items']['shoulder'] = {u'stats': [{u'stat': 59, u'amount': 60}, {u'stat': 32, u'amount': 80}, {u'stat': 5, u'amount': 109}, {u'stat': 7, u'amount': 163}], u'name': u'Mantle of Hooded Nightmares of the Savage', u'tooltipParams': {}, u'armor': 60, u'quality': 3, u'itemLevel': 615, u'context': u'dungeon-normal', u'bonusLists': [83], u'id': 114395, u'icon': u'inv_cloth_draenordungeon_c_01shoulder'}
+        s.character_cache = ccache
+        result = s.character_diff(char_data, new_data)
+        expected = ["change items.shoulder.context from raid-finder to dungeon-normal",
+                    "change [u'items', u'shoulder', u'stats', 0, u'stat'] from 32 to 59",
+                    "change [u'items', u'shoulder', u'stats', 0, u'amount'] from 104 to 60",
+                    "change [u'items', u'shoulder', u'stats', 1, u'stat'] from 5 to 32",
+                    "change [u'items', u'shoulder', u'stats', 1, u'amount'] from 138 to 80",
+                    "change [u'items', u'shoulder', u'stats', 2, u'stat'] from 36 to 5",
+                    "change [u'items', u'shoulder', u'stats', 2, u'amount'] from 72 to 109",
+                    "change [u'items', u'shoulder', u'stats', 3, u'amount'] from 207 to 163",
+                    "change items.shoulder.name from Twin-Gaze Spaulders to Mantle of Hooded Nightmares of the Savage",
+                    "remove items.shoulder.tooltipParams [(u'transmogItem', 31054)]",
+                    "change items.shoulder.armor from 71 to 60",
+                    "change items.shoulder.quality from 4 to 3",
+                    "change items.shoulder.icon from inv_shoulder_cloth_draenorlfr_c_01 to inv_cloth_draenordungeon_c_01shoulder",
+                    "change items.shoulder.itemLevel from 640 to 615",
+                    "change items.shoulder.id from 115997 to 114395",
+                    "add items.shoulder.bonusLists [(0, 83)]",
+                    ]
+        expected_s = "\n".join(expected)
+        assert result == expected_s
 
     def test_char_has_changes_false(self, mock_ns, char_data):
         bn, rc, mocklog, s, conn, lcc = mock_ns

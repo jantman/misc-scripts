@@ -20,6 +20,7 @@ Requirements
 -------------
 
 * battlenet>=0.2.6
+* dictdiffer>=0.3.0
 
 You can install these like:
 
@@ -71,6 +72,7 @@ if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1]
 else:
     import imp
 
+from dictdiffer import diff
 import battlenet
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -221,9 +223,40 @@ class NightlySimcraft:
         :rtype: None or String
         """
         if c_name_realm not in self.character_cache:
+            self.logger.debug("character not in cache: {c}".format(c=c_name_realm))
             return "Character not in cache (has not been seen before)."
         c_old = self.character_cache[c_name_realm]
-        raise NotImplemetedError("")
+        if c_old == c_bnet:
+            self.logger.debug("character identical in cache and battlenet: {c}".format(c=c_name_realm))
+            return None
+        # else they're different
+        self.logger.debug("character has differences between cache and battlenet: {c}".format(c=c_name_realm))
+        return self.character_diff(c_old, c_bnet)
+
+    def character_diff(self, old, new):
+        """
+        Diff two character dicts; return a human-readable representation
+
+        :param old: old (cache) character dict
+        :type old: dict
+        :param new: new (battlenet) character dict
+        :type new: dict
+        :rtype: string
+        """
+        d = diff(old, new)
+        s = ''
+        for x in list(d):
+            if x[0] == 'change':
+                s += 'change {item} from {a} to {b}\n'.format(typ=x[0],
+                                                            item=x[1],
+                                                            a=x[2][0],
+                                                            b=x[2][1])
+            elif x[0] == 'remove':
+                s += 'remove {a} {b}\n'.format(a=x[1], b=x[2])
+            else:
+                s += 'add {a} {b}\n'.format(a=x[1], b=x[2])
+        s = s.strip()
+        return s
     
     def do_character(self, c_settings, c_bnet):
         """
@@ -234,7 +267,7 @@ class NightlySimcraft:
         :param c_bnet: BattleNet data for this character
         :type c_bnet: battlenet.things.Character
         """
-        pass
+        
 
     def get_battlenet(self, realm, character):
         """ get a character's info from Battlenet API """
