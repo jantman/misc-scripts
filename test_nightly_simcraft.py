@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+ # -*- coding: utf-8 -*-
 """
 Tests for nightly_simcraft.py from:
 <https://github.com/jantman/misc-scripts/blob/master/nightly_simcraft.py>
@@ -85,11 +86,19 @@ class Test_NightlySimcraft:
         rc = Mock()
         lc = Mock()
         mocklog = MagicMock(spec_set=logging.Logger)
+        def mock_ap_se(p):
+            return p
+        def mock_eu_se(p):
+            return p.replace('~/', '/home/user/')
         with nested(
                 patch('nightly_simcraft.battlenet.Connection', bn),
                 patch('nightly_simcraft.NightlySimcraft.read_config', rc),
                 patch('nightly_simcraft.NightlySimcraft.load_character_cache', lc),
-        ) as (bnp, rcp, lcc):
+                patch('nightly_simcraft.os.path.expanduser'),
+                patch('nightly_simcraft.os.path.abspath'),
+        ) as (bnp, rcp, lcc, mock_eu, mock_ap):
+            mock_ap.side_effect = mock_ap_se
+            mock_eu.side_effect = mock_eu_se
             s = nightly_simcraft.NightlySimcraft(verbose=2, logger=mocklog)
         return (bn, rc, mocklog, s, conn, lcc)
 
@@ -490,7 +499,7 @@ class Test_NightlySimcraft:
             mock_fexist.return_value = False
             res = s.load_character_cache()
         assert mocko.mock_calls == []
-        assert mock_fexist.call_args_list == [call('~/.nightly_simcraft/characters.pkl')]
+        assert mock_fexist.call_args_list == [call('/home/user/.nightly_simcraft/characters.pkl')]
         assert res == {}
 
     def test_load_char_cache(self, mock_ns):
@@ -505,9 +514,9 @@ class Test_NightlySimcraft:
             mocko.return_value = 'filecontents'
             mock_pkl.return_value = 'unpickled'
             res = s.load_character_cache()
-        assert mocko.mock_calls == [call('~/.nightly_simcraft/characters.pkl', 'rb')]
+        assert mocko.mock_calls == [call('/home/user/.nightly_simcraft/characters.pkl', 'rb')]
         assert mock_pkl.mock_calls == [call('filecontents')]
-        assert mock_fexist.call_args_list == [call('~/.nightly_simcraft/characters.pkl')]
+        assert mock_fexist.call_args_list == [call('/home/user/.nightly_simcraft/characters.pkl')]
         assert res == 'unpickled'
 
     def test_write_char_cache(self, mock_ns):
@@ -522,7 +531,7 @@ class Test_NightlySimcraft:
             mocko.return_value = openmock
             s.character_cache = deepcopy(cache_content)
             s.write_character_cache()
-        assert mocko.mock_calls == [call('~/.nightly_simcraft/characters.pkl', 'wb'),
+        assert mocko.mock_calls == [call('/home/user/.nightly_simcraft/characters.pkl', 'wb'),
                                     call().__enter__(),
                                     call().__exit__(None, None, None)]
         assert mock_pkl.mock_calls == [call(cache_content, openmock.__enter__())]
@@ -655,21 +664,21 @@ class Test_NightlySimcraft:
             mock_subp.return_value = 'subprocessoutput'
             s.settings = settings
             s.do_character(c_name, c_settings, c_diff)
-        assert mock_ope.call_args_list == [call('/path/to/simc'), call('~/.nightly_simcraft/cname@rname.html')]
-        assert mocko.mock_calls == [call('~/.nightly_simcraft/cname@rname.simc', 'w'),
+        assert mock_ope.call_args_list == [call('/path/to/simc'), call('/home/user/.nightly_simcraft/cname@rname.html')]
+        assert mocko.mock_calls == [call('/home/user/.nightly_simcraft/cname@rname.simc', 'w'),
                                     call().__enter__(),
                                     call().__enter__().write('"armory=us,rname,cname"\n'),
                                     call().__enter__().write('calculate_scale_factors=1\n'),
                                     call().__enter__().write('html=cname@rname.html'),
                                     call().__exit__(None, None, None)]
-        assert mock_chdir.call_args_list == [call('~/.nightly_simcraft')]
+        assert mock_chdir.call_args_list == [call('/home/user/.nightly_simcraft')]
         assert mock_subp.call_args_list == [call(['/path/to/simc',
-                                                  '~/.nightly_simcraft/cname@rname.simc'],
+                                                  '/home/user/.nightly_simcraft/cname@rname.simc'],
                                                  stderr=subprocess.STDOUT)]
         assert mock_sce.call_args_list == [call('cname@rname',
                                                 {'realm': 'rname', 'name': 'cname', 'email': ['foo@example.com']},
                                                 'diffcontent',
-                                                '~/.nightly_simcraft/cname@rname.html',
+                                                '/home/user/.nightly_simcraft/cname@rname.html',
                                                 datetime.timedelta(seconds=3723),
                                                 'subprocessoutput')]
         assert mocklog.error.call_args_list == []
@@ -701,15 +710,15 @@ class Test_NightlySimcraft:
             s.settings = settings
             s.do_character(c_name, c_settings, c_diff)
         assert mock_ope.call_args_list == [call('/path/to/simc')]
-        assert mocko.mock_calls == [call('~/.nightly_simcraft/cname@rname.simc', 'w'),
+        assert mocko.mock_calls == [call('/home/user/.nightly_simcraft/cname@rname.simc', 'w'),
                                     call().__enter__(),
                                     call().__enter__().write('"armory=us,rname,cname"\n'),
                                     call().__enter__().write('calculate_scale_factors=1\n'),
                                     call().__enter__().write('html=cname@rname.html'),
                                     call().__exit__(None, None, None)]
-        assert mock_chdir.call_args_list == [call('~/.nightly_simcraft')]
+        assert mock_chdir.call_args_list == [call('/home/user/.nightly_simcraft')]
         assert mock_subp.call_args_list == [call(['/path/to/simc',
-                                                  '~/.nightly_simcraft/cname@rname.simc'],
+                                                  '/home/user/.nightly_simcraft/cname@rname.simc'],
                                                  stderr=subprocess.STDOUT)]
         assert mock_sce.call_args_list == []
         assert mocklog.error.call_args_list == [call('Error running simc!')]
@@ -725,7 +734,7 @@ class Test_NightlySimcraft:
         setattr(settings, 'CHARACTERS', [c_settings])
         
         def mock_ope_se(p):
-            if p == '~/.nightly_simcraft/cname@rname.html':
+            if p == '/home/user/.nightly_simcraft/cname@rname.html':
                 return False
             return True
 
@@ -742,16 +751,16 @@ class Test_NightlySimcraft:
             mock_subp.return_value = 'simcoutput'
             s.settings = settings
             s.do_character(c_name, c_settings, c_diff)
-        assert mock_ope.call_args_list == [call('/path/to/simc'), call('~/.nightly_simcraft/cname@rname.html')]
-        assert mocko.mock_calls == [call('~/.nightly_simcraft/cname@rname.simc', 'w'),
+        assert mock_ope.call_args_list == [call('/path/to/simc'), call('/home/user/.nightly_simcraft/cname@rname.html')]
+        assert mocko.mock_calls == [call('/home/user/.nightly_simcraft/cname@rname.simc', 'w'),
                                     call().__enter__(),
                                     call().__enter__().write('"armory=us,rname,cname"\n'),
                                     call().__enter__().write('calculate_scale_factors=1\n'),
                                     call().__enter__().write('html=cname@rname.html'),
                                     call().__exit__(None, None, None)]
-        assert mock_chdir.call_args_list == [call('~/.nightly_simcraft')]
+        assert mock_chdir.call_args_list == [call('/home/user/.nightly_simcraft')]
         assert mock_subp.call_args_list == [call(['/path/to/simc',
-                                                  '~/.nightly_simcraft/cname@rname.simc'],
+                                                  '/home/user/.nightly_simcraft/cname@rname.simc'],
                                                  stderr=subprocess.STDOUT)]
         assert mock_sce.call_args_list == []
         assert mocklog.error.call_args_list == [call('ERROR: simc finished but HTML file not found on disk.')]
@@ -759,9 +768,41 @@ class Test_NightlySimcraft:
     def test_send_char_email(self, mock_ns):
         """ test send_char_email() in normal case """
         bn, rc, mocklog, s, conn, lcc = mock_ns
-        # not implemented
-        assert 0 == 1
+        c_settings = {'realm': 'rname', 'name': 'cname', 'email': ['foo@example.com']}
+        c_name = 'cname@rname'
+        c_diff = 'diffcontent'
+        html_path = '/path/to/output.html'
+        duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
+        output = 'simc_output_string'
+        settings = Container()
+        setattr(settings, 'SIMC_PATH', '/path/to/simc')
+        setattr(settings, 'CHARACTERS', [c_settings])
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.send_gmail'),
+                patch('nightly_simcraft.NightlySimcraft.format_message'),
+        ) as (mock_gmail, mock_format):
+            mock_format.return_value = 'msgbody'
+            s.settings = settings
+            s.send_char_email(c_name,
+                              c_settings,
+                              c_diff,
+                              html_path,
+                              duration,
+                              output)
+        assert mock_gmail.call_args_list == [call('foo@example.com',
+                                                  'SimulationCraft output for cname@rname',
+                                                  'msgbody')]
+        assert mock_format.call_args_list == [call()]
+                              
+            
 
+    def test_make_char_name(self, mock_ns):
+        """ make_character_name() tests """
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        assert s.make_character_name('n', 'r') == 'n@r'
+        assert s.make_character_name('MyName', 'MyRealm') == 'MyName@MyRealm'
+        assert s.make_character_name('sómÊñámé', 'Area 52') == 'sómÊñámé@Area52'
+        
     @freeze_time("2014-01-01 01:02:03")
     def test_now(self, mock_ns):
         bn, rc, mocklog, s, conn, lcc = mock_ns

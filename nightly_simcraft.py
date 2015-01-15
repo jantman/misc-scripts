@@ -119,7 +119,7 @@ class NightlySimcraft:
         elif verbose > 0:
             self.logger.setLevel(logging.INFO)
         self.dry_run = dry_run
-        self.confdir = confdir
+        self.confdir = os.path.abspath(os.path.expanduser(confdir))
         self.read_config(confdir)
         self.logger.debug("connecting to BattleNet API")
         self.bnet = battlenet.Connection()
@@ -200,7 +200,7 @@ class NightlySimcraft:
     def run(self):
         """ do stuff here """
         for char in self.settings.CHARACTERS:
-            cname = '{c}@{r}'.format(c=char['name'], r=char['realm'])
+            cname = self.make_character_name(char['name'], char['realm'])
             self.logger.debug("Doing character: {c}".format(c=cname))
             if not self.validate_character(char):
                 self.logger.warning("Character configuration not valid, skipping: {c}".format(c=cname))
@@ -215,6 +215,10 @@ class NightlySimcraft:
             else:
                 self.logger.info("Character {c} has no changes, skipping.".format(c=cname))
         self.logger.info("Done with all characters.")
+
+    def make_character_name(self, name, realm):
+        realm = realm.replace(' ', '')
+        return '{n}@{r}'.format(n=name, r=realm)
 
     def character_has_changes(self, c_name_realm, c_bnet):
         """
@@ -287,6 +291,7 @@ class NightlySimcraft:
             fh.write("calculate_scale_factors=1\n")
             fh.write("html={cn}.html".format(cn=c_name))
         os.chdir(self.confdir)
+        self.logger.debug("Running: {p} {f}".format(p=self.settings.SIMC_PATH, f=simc_file))
         start = self.now()
         try:
             res = subprocess.check_output([self.settings.SIMC_PATH,
@@ -300,6 +305,7 @@ class NightlySimcraft:
         if not os.path.exists(html_file):
             self.logger.error("ERROR: simc finished but HTML file not found on disk.")
             return
+        self.logger.debug("Ran simc, generated {h} in {d}".format(h=html_file, d=(end - start)))
         self.send_char_email(c_name,
                              c_settings,
                              c_diff,
@@ -323,6 +329,25 @@ class NightlySimcraft:
         :type duration: datetime.timedelta
         :param output: output from simc command
         :type output: string
+        """
+        emails = c_settings['email']
+        if type(emails) == type(""):
+            emails = [emails]
+        for dest_addr in emails:
+            self.logger.info("Sending email for character {c} to {e}".format(c=c_name, e=dest_addr))
+            if self.dry_run:
+                self.logger.warning("DRY RUN - not actually sending email")
+                continue
+            msg = self.format_message()
+            self.send_gmail(dest_addr, 'SimulationCraft output for {c}'.format(c=c_name), msg)
+        self.logger.debug("done sending emails for {cname}".format(cname=c_name))
+
+    def format_message(self):
+        raise NotImplementedError()
+        
+    def send_gmail(self, dest, subj, body):
+        """
+
         """
         pass
 
