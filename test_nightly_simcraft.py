@@ -774,13 +774,15 @@ class Test_NightlySimcraft:
         html_path = '/path/to/output.html'
         duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
         output = 'simc_output_string'
+        subj = 'SimulationCraft output for cname@rname'
         settings = Container()
         setattr(settings, 'SIMC_PATH', '/path/to/simc')
         setattr(settings, 'CHARACTERS', [c_settings])
         with nested(
                 patch('nightly_simcraft.NightlySimcraft.send_gmail'),
                 patch('nightly_simcraft.NightlySimcraft.format_message'),
-        ) as (mock_gmail, mock_format):
+                patch('nightly_simcraft.NightlySimcraft.send_local'),
+        ) as (mock_gmail, mock_format, mock_local):
             mock_format.return_value = 'msgbody'
             s.settings = settings
             s.send_char_email(c_name,
@@ -789,13 +791,168 @@ class Test_NightlySimcraft:
                               html_path,
                               duration,
                               output)
+        assert mock_format.call_args_list == [call('foo@example.com',
+                                                   subj,
+                                                   c_name,
+                                                   c_diff,
+                                                   html_path,
+                                                   duration,
+                                                   output)]
+        assert mock_local.call_args_list == [call('foo@example.com',
+                                                  'SimulationCraft output for cname@rname',
+                                                  'msgbody')]
+        assert mock_gmail.call_args_list == []
+
+    def test_send_char_string_email(self, mock_ns):
+        """ test send_char_email() with email as a string """
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        c_settings = {'realm': 'rname',
+                      'name': 'cname',
+                      'email': 'foo@example.com'}
+        c_name = 'cname@rname'
+        c_diff = 'diffcontent'
+        html_path = '/path/to/output.html'
+        duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
+        output = 'simc_output_string'
+        subj = 'SimulationCraft output for cname@rname'
+        settings = Container()
+        setattr(settings, 'SIMC_PATH', '/path/to/simc')
+        setattr(settings, 'CHARACTERS', [c_settings])
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.send_gmail'),
+                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.send_local'),
+        ) as (mock_gmail, mock_format, mock_local):
+            mock_format.return_value = 'msgbody'
+            s.settings = settings
+            s.send_char_email(c_name,
+                              c_settings,
+                              c_diff,
+                              html_path,
+                              duration,
+                              output)
+        assert mock_format.call_args_list == [call('foo@example.com',
+                                                   subj,
+                                                   c_name,
+                                                   c_diff,
+                                                   html_path,
+                                                   duration,
+                                                   output)]
+        assert mock_local.call_args_list == [call('foo@example.com',
+                                                  'SimulationCraft output for cname@rname',
+                                                  'msgbody')]
+        assert mock_gmail.call_args_list == []
+
+    def test_send_char_string_email_gmail(self, mock_ns):
+        """ test send_char_email() via gmail """
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        c_settings = {'realm': 'rname',
+                      'name': 'cname',
+                      'email': 'foo@example.com'}
+        c_name = 'cname@rname'
+        c_diff = 'diffcontent'
+        html_path = '/path/to/output.html'
+        duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
+        output = 'simc_output_string'
+        subj = 'SimulationCraft output for cname@rname'
+        settings = Container()
+        setattr(settings, 'SIMC_PATH', '/path/to/simc')
+        setattr(settings, 'CHARACTERS', [c_settings])
+        setattr(settings, 'GMAIL_USERNAME', 'gmailuser')
+        setattr(settings, 'GMAIL_PASSWORD', 'gmailpass')
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.send_gmail'),
+                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.send_local'),
+        ) as (mock_gmail, mock_format, mock_local):
+            mock_format.return_value = 'msgbody'
+            s.settings = settings
+            s.send_char_email(c_name,
+                              c_settings,
+                              c_diff,
+                              html_path,
+                              duration,
+                              output)
+        assert mock_format.call_args_list == [call('foo@example.com',
+                                                   subj,
+                                                   c_name,
+                                                   c_diff,
+                                                   html_path,
+                                                   duration,
+                                                   output)]
         assert mock_gmail.call_args_list == [call('foo@example.com',
                                                   'SimulationCraft output for cname@rname',
                                                   'msgbody')]
-        assert mock_format.call_args_list == [call()]
-                              
-            
+        assert mock_local.call_args_list == []
 
+    def test_send_char_email_dryrun(self, mock_ns):
+        """ test send_char_email() for a dry run """
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        c_settings = {'realm': 'rname',
+                      'name': 'cname',
+                      'email': ['foo@example.com']}
+        c_name = 'cname@rname'
+        c_diff = 'diffcontent'
+        html_path = '/path/to/output.html'
+        duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
+        output = 'simc_output_string'
+        subj = 'SimulationCraft output for cname@rname'
+        settings = Container()
+        setattr(settings, 'SIMC_PATH', '/path/to/simc')
+        setattr(settings, 'CHARACTERS', [c_settings])
+        with nested(
+                patch('nightly_simcraft.NightlySimcraft.send_gmail'),
+                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.send_local'),
+        ) as (mock_gmail, mock_format, mock_local):
+            mock_format.return_value = 'msgbody'
+            s.settings = settings
+            s.dry_run = True
+            s.send_char_email(c_name,
+                              c_settings,
+                              c_diff,
+                              html_path,
+                              duration,
+                              output)
+        assert mocklog.info.call_args_list == [call("Sending email for character cname@rname to foo@example.com")]
+        assert mocklog.warning.call_args_list == [call("DRY RUN - not actually sending email")]
+        assert mock_format.call_args_list == []
+        assert mock_local.call_args_list == []
+        assert mock_gmail.call_args_list == []
+
+    def test_format_message(self, mock_ns):
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        dest_addr = 'foo@example.com'
+        subj = 'mysubj'
+        c_name = 'cname@rname'
+        c_diff = 'characterDiffHere'
+        html_path = '/path/to/html'
+        duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
+        output = 'simcoutput'
+        # foo
+        expected = 'SimulationCraft was run for cname@rname due to the following changes:\n'
+        expected += '\ncharacterDiffHere\n\n'
+        expected += 'The run was completed in 1:02:03 and the HTML report is attached.\n\n'
+        expected += 'SimulationCraft output: \n\nsimcoutput\n\n'
+        expected += 'This run was done on nodename at 2014-01-01 00:00:00 by nightly_simcraft.py va.b.c'
+        with nested(
+                patch('nightly_simcraft.platform.node'),
+                patch('nightly_simcraft.getpass.getuser'),
+                patch('nightly_simcraft.NightlySimcraft.now'),
+        ) as (mock_node, mock_user, mock_now):
+            mock_node.return_value = 'nodename'
+            mock_user.return_value = 'username'
+            mock_now.return_value = datetime.datetime(2014, 1, 1, 0, 0, 0)
+            with patch.object(s, 'VERSION', 'a.b.c'):
+                res = s.format_message(dest_addr,
+                                       subj,
+                                       c_name,
+                                       c_diff,
+                                       html_path,
+                                       duration,
+                                       output)
+            assert res == (expected, 'username@nodename')
+        
     def test_make_char_name(self, mock_ns):
         """ make_character_name() tests """
         bn, rc, mocklog, s, conn, lcc = mock_ns
