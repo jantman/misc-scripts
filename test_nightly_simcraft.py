@@ -52,8 +52,11 @@ import sys
 import datetime
 from copy import deepcopy
 import subprocess
-from freezegun import freeze_time
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from base64 import b64decode
 
+from freezegun import freeze_time
 import battlenet
 import nightly_simcraft
 
@@ -780,10 +783,15 @@ class Test_NightlySimcraft:
         setattr(settings, 'CHARACTERS', [c_settings])
         with nested(
                 patch('nightly_simcraft.NightlySimcraft.send_gmail'),
-                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.format_message', spec_set=MIMEMultipart),
                 patch('nightly_simcraft.NightlySimcraft.send_local'),
-        ) as (mock_gmail, mock_format, mock_local):
-            mock_format.return_value = 'msgbody'
+                patch('nightly_simcraft.platform.node'),
+                patch('nightly_simcraft.getpass.getuser'),
+
+        ) as (mock_gmail, mock_format, mock_local, mock_node, mock_user):
+            mock_node.return_value = 'nodename'
+            mock_user.return_value = 'username'
+            mock_format.return_value.as_string.return_value = 'msgbody'
             s.settings = settings
             s.send_char_email(c_name,
                               c_settings,
@@ -791,15 +799,16 @@ class Test_NightlySimcraft:
                               html_path,
                               duration,
                               output)
-        assert mock_format.call_args_list == [call('foo@example.com',
+        assert mock_format.call_args_list == [call('username@nodename',
+                                                   'foo@example.com',
                                                    subj,
                                                    c_name,
                                                    c_diff,
                                                    html_path,
                                                    duration,
                                                    output)]
-        assert mock_local.call_args_list == [call('foo@example.com',
-                                                  'SimulationCraft output for cname@rname',
+        assert mock_local.call_args_list == [call('username@nodename',
+                                                  'foo@example.com',
                                                   'msgbody')]
         assert mock_gmail.call_args_list == []
 
@@ -820,10 +829,14 @@ class Test_NightlySimcraft:
         setattr(settings, 'CHARACTERS', [c_settings])
         with nested(
                 patch('nightly_simcraft.NightlySimcraft.send_gmail'),
-                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.format_message', spec_set=MIMEMultipart),
                 patch('nightly_simcraft.NightlySimcraft.send_local'),
-        ) as (mock_gmail, mock_format, mock_local):
-            mock_format.return_value = 'msgbody'
+                patch('nightly_simcraft.platform.node'),
+                patch('nightly_simcraft.getpass.getuser'),
+        ) as (mock_gmail, mock_format, mock_local, mock_node, mock_user):
+            mock_node.return_value = 'nodename'
+            mock_user.return_value = 'username'
+            mock_format.return_value.as_string.return_value = 'msgbody'
             s.settings = settings
             s.send_char_email(c_name,
                               c_settings,
@@ -831,19 +844,20 @@ class Test_NightlySimcraft:
                               html_path,
                               duration,
                               output)
-        assert mock_format.call_args_list == [call('foo@example.com',
+        assert mock_format.call_args_list == [call('username@nodename',
+                                                   'foo@example.com',
                                                    subj,
                                                    c_name,
                                                    c_diff,
                                                    html_path,
                                                    duration,
                                                    output)]
-        assert mock_local.call_args_list == [call('foo@example.com',
-                                                  'SimulationCraft output for cname@rname',
+        assert mock_local.call_args_list == [call('username@nodename',
+                                                  'foo@example.com',
                                                   'msgbody')]
         assert mock_gmail.call_args_list == []
 
-    def test_send_char_string_email_gmail(self, mock_ns):
+    def test_send_char_email_gmail(self, mock_ns):
         """ test send_char_email() via gmail """
         bn, rc, mocklog, s, conn, lcc = mock_ns
         c_settings = {'realm': 'rname',
@@ -862,10 +876,14 @@ class Test_NightlySimcraft:
         setattr(settings, 'GMAIL_PASSWORD', 'gmailpass')
         with nested(
                 patch('nightly_simcraft.NightlySimcraft.send_gmail'),
-                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.format_message', spec_set=MIMEMultipart),
                 patch('nightly_simcraft.NightlySimcraft.send_local'),
-        ) as (mock_gmail, mock_format, mock_local):
-            mock_format.return_value = 'msgbody'
+                patch('nightly_simcraft.platform.node'),
+                patch('nightly_simcraft.getpass.getuser'),
+        ) as (mock_gmail, mock_format, mock_local, mock_node, mock_user):
+            mock_node.return_value = 'nodename'
+            mock_user.return_value = 'username'
+            mock_format.return_value.as_string.return_value = 'msgbody'
             s.settings = settings
             s.send_char_email(c_name,
                               c_settings,
@@ -873,15 +891,16 @@ class Test_NightlySimcraft:
                               html_path,
                               duration,
                               output)
-        assert mock_format.call_args_list == [call('foo@example.com',
+        assert mock_format.call_args_list == [call('username@nodename',
+                                                   'foo@example.com',
                                                    subj,
                                                    c_name,
                                                    c_diff,
                                                    html_path,
                                                    duration,
                                                    output)]
-        assert mock_gmail.call_args_list == [call('foo@example.com',
-                                                  'SimulationCraft output for cname@rname',
+        assert mock_gmail.call_args_list == [call('username@nodename',
+                                                  'foo@example.com',
                                                   'msgbody')]
         assert mock_local.call_args_list == []
 
@@ -902,10 +921,14 @@ class Test_NightlySimcraft:
         setattr(settings, 'CHARACTERS', [c_settings])
         with nested(
                 patch('nightly_simcraft.NightlySimcraft.send_gmail'),
-                patch('nightly_simcraft.NightlySimcraft.format_message'),
+                patch('nightly_simcraft.NightlySimcraft.format_message', spec_set=MIMEMultipart),
                 patch('nightly_simcraft.NightlySimcraft.send_local'),
-        ) as (mock_gmail, mock_format, mock_local):
-            mock_format.return_value = 'msgbody'
+                patch('nightly_simcraft.platform.node'),
+                patch('nightly_simcraft.getpass.getuser'),
+        ) as (mock_gmail, mock_format, mock_local, mock_node, mock_user):
+            mock_node.return_value = 'nodename'
+            mock_user.return_value = 'username'
+            mock_format.as_string.return_value = 'msgbody'
             s.settings = settings
             s.dry_run = True
             s.send_char_email(c_name,
@@ -921,15 +944,17 @@ class Test_NightlySimcraft:
         assert mock_gmail.call_args_list == []
 
     def test_format_message(self, mock_ns):
+        """ test format_message() """
         bn, rc, mocklog, s, conn, lcc = mock_ns
         dest_addr = 'foo@example.com'
         subj = 'mysubj'
         c_name = 'cname@rname'
         c_diff = 'characterDiffHere'
-        html_path = '/path/to/html'
+        html_path = '/path/to/file.html'
         duration = datetime.timedelta(seconds=3723)  # 1h 2m 3s
         output = 'simcoutput'
-        # foo
+        from_addr = 'from@me'
+        htmlcontent = '<html><head><title>foo</title></head><body>bar</body></html>'
         expected = 'SimulationCraft was run for cname@rname due to the following changes:\n'
         expected += '\ncharacterDiffHere\n\n'
         expected += 'The run was completed in 1:02:03 and the HTML report is attached.\n\n'
@@ -937,22 +962,66 @@ class Test_NightlySimcraft:
         expected += 'This run was done on nodename at 2014-01-01 00:00:00 by nightly_simcraft.py va.b.c'
         with nested(
                 patch('nightly_simcraft.platform.node'),
-                patch('nightly_simcraft.getpass.getuser'),
                 patch('nightly_simcraft.NightlySimcraft.now'),
-        ) as (mock_node, mock_user, mock_now):
+                patch('nightly_simcraft.open', create=True)
+        ) as (mock_node, mock_now, mock_open):
             mock_node.return_value = 'nodename'
-            mock_user.return_value = 'username'
             mock_now.return_value = datetime.datetime(2014, 1, 1, 0, 0, 0)
+            mock_open.return_value = MagicMock(spec=file)
             with patch.object(s, 'VERSION', 'a.b.c'):
-                res = s.format_message(dest_addr,
+                mock_open.return_value.__enter__.return_value.read.return_value = htmlcontent
+                res = s.format_message(from_addr,
+                                       dest_addr,
                                        subj,
                                        c_name,
                                        c_diff,
                                        html_path,
                                        duration,
                                        output)
-            assert res == (expected, 'username@nodename')
-        
+        print(type(res._payload[0]))
+        print(dir(res._payload[0]))
+        print(vars(res._payload[0]))
+        assert res.preamble == expected
+        assert res['Subject'] == subj
+        assert res['To'] == dest_addr
+        assert res['From'] == from_addr
+        htmlp = res._payload[0]
+        assert htmlp._charset == 'utf-8'
+        assert b64decode(htmlp._payload) == htmlcontent
+        file_handle = mock_open.return_value.__enter__.return_value
+        assert mock_open.call_args_list == [call('/path/to/file.html', 'r')]
+        assert file_handle.read.call_count == 1
+
+    def test_send_local(self, mock_ns):
+        """ send_local() test """
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        with nested(
+                patch('nightly_simcraft.smtplib.SMTP', autospec=True),
+        ) as (mock_smtp, ):
+            s.send_local('from', 'to', 'msg')
+        assert mock_smtp.mock_calls == [call('localhost'),
+                                        call().sendmail('from', ['to'], 'msg'),
+                                        call().quit()
+        ]
+
+    def test_send_gmail(self, mock_ns):
+        """ send_gmail() test """
+        bn, rc, mocklog, s, conn, lcc = mock_ns
+        settings = Container()
+        setattr(settings, 'GMAIL_USER', 'myusername')
+        setattr(settings, 'GMAIL_PASSWORD', 'mypassword')
+        with nested(
+                patch('nightly_simcraft.smtplib.SMTP', autospec=True),
+        ) as (mock_smtp, ):
+            s.settings = settings
+            s.send_gmail('from', 'to', 'msg')
+        assert mock_smtp.mock_calls == [call('smtp.gmail.com:587'),
+                                        call().starttls(),
+                                        call().login('myusername', 'mypassword'),
+                                        call().sendmail('from', ['to'], 'msg'),
+                                        call().quit()
+        ]
+
     def test_make_char_name(self, mock_ns):
         """ make_character_name() tests """
         bn, rc, mocklog, s, conn, lcc = mock_ns

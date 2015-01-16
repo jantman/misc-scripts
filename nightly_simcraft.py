@@ -75,6 +75,7 @@ import platform
 import getpass
 import smtplib
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 if sys.version_info[0] > 3 or ( sys.version_info[0] == 3 and sys.version_info[1] >= 3):
     import importlib.machinery
@@ -350,20 +351,21 @@ class NightlySimcraft:
         emails = c_settings['email']
         if type(emails) == type(""):
             emails = [emails]
+        from_addr = getpass.getuser() + '@' + platform.node()
         subj = 'SimulationCraft output for {c}'.format(c=c_name)
         for dest_addr in emails:
             self.logger.info("Sending email for character {c} to {e}".format(c=c_name, e=dest_addr))
             if self.dry_run:
                 self.logger.warning("DRY RUN - not actually sending email")
                 continue
-            msg = self.format_message(dest_addr, subj, c_name, c_diff, html_path, duration, output)
+            msg = self.format_message(from_addr, dest_addr, subj, c_name, c_diff, html_path, duration, output)
             if hasattr(self.settings, 'GMAIL_USERNAME') and self.settings.GMAIL_USERNAME is not None:
-                self.send_gmail(dest_addr, subj , msg)
+                self.send_gmail(from_addr, dest_addr, msg.as_string())
             else:
-                self.send_local(dest_addr, subj, msg)
+                self.send_local(from_addr, dest_addr, msg.as_string())
         self.logger.debug("done sending emails for {cname}".format(cname=c_name))
 
-    def format_message(self, dest_addr, subj, c_name, c_diff, html_path, duration, output):
+    def format_message(self, from_addr, dest_addr, subj, c_name, c_diff, html_path, duration, output):
         body = 'SimulationCraft was run for {c} due to the following changes:\n'.format(c=c_name)
         body += '\n' + c_diff + '\n\n'
         body += 'The run was completed in {d} and the HTML report is attached.\n\n'.format(d=duration)
@@ -372,25 +374,34 @@ class NightlySimcraft:
         body += footer.format(h=platform.node(),
                               t=self.now(),
                               v=self.VERSION)
-        from_addr = getpass.getuser() + '@' + platform.node()
         msg = MIMEMultipart()
         msg['Subject'] = subj
         msg['From'] = from_addr
         msg['To'] = dest_addr
         msg.preamble = body
-        return (body, from_addr)
+        with open(html_path, 'r') as fh:
+            html = fh.read()
+        html_att = MIMEText(html, 'html', 'utf-8')
+        msg.attach(html_att)
+        return msg
         
-    def send_gmail(self, dest, subj, body):
+    def send_gmail(self, from_addr, dest, msg_s):
         """
+        Send email using GMail
+        """
+        s = smtplib.SMTP('smtp.gmail.com:587')
+        s.starttls()
+        s.login(self.settings.GMAIL_USER, self.settings.GMAIL_PASSWORD)
+        s.sendmail(from_addr, [dest], msg_s)
+        s.quit()
 
+    def send_local(self, from_addr, dest, msg_s):
         """
-        pass
-
-    def send_local(self, dest, subj, body):
+        Send email using local SMTP
         """
-
-        """
-        pass
+        s = smtplib.SMTP('localhost')
+        s.sendmail(from_addr, [dest], msg_s)
+        s.quit()
 
     def now(self):
         """
