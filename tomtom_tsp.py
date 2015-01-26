@@ -3,9 +3,8 @@
 Script to take a list of [TomTom](http://wow.curseforge.com/addons/tomtom/)
 WoW addon coordinates and output them in the optimal order.
 
-In a more general sense, this script implements the Try-All-Tours exact
-algorithm to solve the Traveling Salesman Problem (TSP), using TomTom
-waypoint notation as coordinate input.
+This script uses Philippe Guglielmetti's [Goulib](https://pypi.python.org/pypi/Goulib/1.8.3)
+implementation of the hill-climbing algorithm for solving the TSP.
 
 Requirements
 -------------
@@ -13,18 +12,26 @@ Requirements
 This script requires Python 2.7+ (including 3.x) and the following packages,
 which can be installed via ``pip``:
 
-* matplotlib
+* ``matplotlib`` (for plotting)
+* ``Goulib``
 
 Usage
 ------
 
 Put your waypoints in a text file, one per line. Format should be anything designed
-for TomTom, specifically:
+for TomTom, specifically anything matching:
+
+    '(/way)?[ ]?(\d+[\.]?\d*)[, ]+(\d+(.)?\d*)'
 
 The points will be ordered optimally and output to STDOUT. With the ``-o`` option,
-they will be written to a file in addition to STDOUT.
+they will be written to a file in addition to STDOUT. ``--macro`` will break output
+into macro-length sections.
 
-The ``--start`` option specifies a point to start at.
+ToDo
+-----
+
+- Start route at a given point?
+- Plot on zone map?
 
 Copyright
 ----------
@@ -47,21 +54,20 @@ CHANGELOG:
 import sys
 import argparse
 import logging
-import matplotlib
 import matplotlib.pyplot as plt
-import random
-import time
 import itertools
 import re
+from math import hypot
+from Goulib import optim
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 
 
-class TomTom_TSP:
+class TomTomTSP:
     """ might as well use a class. It'll make things easier later. """
 
-    def __init__(self, infile, outfile=None, start=None, verbose=0, plot=False):
+    def __init__(self, infile, outfile=None, verbose=0, plot=False, numiter=10000, macro=False):
         """ init method, run at class creation """
         line_re = re.compile(r'(/way)?[ ]?(\d+[\.]?\d*)[, ]+(\d+(.)?\d*)')
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -71,16 +77,13 @@ class TomTom_TSP:
             self.logger.setLevel(logging.INFO)
         self.outfile = outfile
         self.plot = plot
-        # test start format
-        if start is not None:
-            m = line_re.match(start)
-            if not m:
-                self.logger.critical("ERROR: --start argument '{s}' is not in correct X,Y format.".format(s=start))
-                raise SystemExit()
-            self.start = complex(float(m.group(2)), float(m.group(3)))
-            self.logger.debug("Setting start point to: {s}".format(s=self.start))
+        self.macro = macro
+        self.numiter = numiter
+        self.infile = infile
+        # read in the file
         with open(infile, 'r') as fh:
             lines = fh.readlines()
+        # parse waypoints - both list and set
         self.waypoints = set()
         self.original_order = []
         lineno = 0
@@ -95,22 +98,27 @@ class TomTom_TSP:
                 self.logger.error("Invalid coordinate on line {n}: {l}".format(l=line, n=lineno))
                 continue
             try:
-                c = complex(float(m.group(2)), float(m.group(3)))
+                c = (float(m.group(2)), float(m.group(3)))
                 self.waypoints.add(c)
-                self.original_order.append(c)
+                if c not in self.original_order:
+                    self.original_order.append(c)
             except Exception as ex:
                 self.logger.error("ERROR parsing line {n}: {l}".format(l=line, n=lineno))
                 self.logger.exception(ex)
                 raise SystemExit()
         self.logger.info("Loaded {n} waypoints from {i}".format(n=len(self.waypoints), i=infile))
+        self.logger.debug("List length={l} set length={s}".format(l=len(self.original_order), s=len(self.waypoints)))
 
     def run(self):
         """ do stuff here """
         self.logger.info("info-level log message")
-        self.logger.debug("Calculating exact TSP route...")
-        tour = self.exact_TSP(self.waypoints)
+        self.logger.debug("Calculating TSP route...")
+        tour = self.optim_wrapper()
         self.logger.debug("Done calculating route.")
-        out = self.output_tour(tour)
+        if self.macro:
+            out = self.tour_macro(tour)
+        else:
+            out = self.output_tour(tour)
         print(out)
         if self.outfile is not None:
             with open(self.outfile, 'w') as fh:
@@ -125,7 +133,20 @@ class TomTom_TSP:
             self.plot_tour(tour)
             self.logger.info("Plots written to: {i}.png".format(i=self.infile))
             plt.savefig('{i}.png'.format(i=self.infile), bbox_inches='tight')
-        # look at plotting
+
+    def optim_wrapper(self):
+        """ wrap Goulib.optim.tsp and return result """
+        self.logger.debug("Running Goulib.optim.tsp with {n} iterations".format(n=self.numiter))
+        r = optim.tsp(self.original_order,
+                      self.distance,
+                      max_iterations=10000,
+                      close=False)
+        # returns tuple; 2 is list of input indexes
+        res = []
+        # generate a list of points
+        for idx in r[2]:
+            res.append(self.original_order[idx])
+        return res
 
     def plot_tour(self, tour):
         "Apply a TSP algorithm to cities, and plot the resulting tour."
@@ -140,43 +161,41 @@ class TomTom_TSP:
 
     def XY(self, points):
         "Given a list of points, return two lists: X coordinates, and Y coordinates."
-        return [p.real for p in points], [p.imag for p in points]
+        return [p[0] for p in points], [p[1] for p in points]
 
     def output_tour(self, tour):
         """ return TomTom-style string """
         s = ''
         for i in tour:
-            s += '/way {r},{i}\n'.format(r=i.real, i=i.imag)
+            s += format_point(i) + "\n"
         return s
-        
-    def total_distance(self, tour):
-        "The total distance between each pair of consecutive cities in the tour."
-        return sum(self.distance(tour[i], tour[i-1]) for i in range(len(tour)))
+
+    def format_point(self, p):
+        return '/way {x}, {y}'.format(x=p[0], y=p[1])
+
+    def tour_macro(self, tour):
+        """ return TomTom-style macro-safe string """
+        s = ''
+        tmp_s = ''
+        count = 0
+        for i in tour:
+            tmp = self.format_point(i) + "\n"
+            if len(tmp_s) + len(tmp) > 255:
+                count += 1
+                s += "# macro {c}\n{t}".format(c=count, t=tmp_s)
+                tmp_s = ''
+            tmp_s += tmp
+        if tmp_s != '':
+            if s == '':
+                s = tmp_s
+            else:
+                count += 1
+                s += "# macro {c}\n{t}".format(c=count, t=tmp_s)
+        return s
 
     def distance(self, A, B):
         "The distance between two points."
-        return abs(A - B)
-
-    def exact_TSP(self, points):
-        "Generate all possible tours of the cities and choose the shortest one."
-        tours = self.alltours(points)
-        self.logger.debug("Found {t} possible routes.".format(t=len(tours)))
-        return self.shortest(tours)
-
-    def shortest(self, tours):
-        "Return the tour with the minimum total distance."
-        return min(tours, key=self.total_distance)
-
-    def alltours(self, points):
-        "Return a list of tours, each a permutation of cities, but each one starting with the same city."
-        self.logger.debug("Calculating all possible routes...")
-        start = self.first(points)
-        return [[start] + list(tour)
-                for tour in itertools.permutations(points - {start})]
-
-    def first(self, collection):
-        "Start iterating over collection, and return the first element."
-        for x in collection: return x
+        return abs(hypot(B[0]-A[0], B[1]-A[1]))
 
 
 def parse_args(argv):
@@ -193,10 +212,12 @@ def parse_args(argv):
                    help='verbose output. specify twice for debug-level output.')
     p.add_argument('-o', '--output', dest='outfile', action='store', type=str,
                    help='file to write output to, in addition to STDOUT')
-    p.add_argument('-s', '--start', dest='startpoint', action='store', type=str,
-                   help='Starting point in X,Y format')
     p.add_argument('-p', '--plot', dest='plot', action='store_true', default=False,
                    help='also output a plot image of the route')
+    p.add_argument('-n', '--num-iterations', dest='numiter', action='store', type=int, default=10000,
+                   help='number of iterations - more iterations yields a more accurate result')
+    p.add_argument('-m', '--macro', action='store_true', default=False,
+                   help='split output into chunks < 255 characters each')
 
     args = p.parse_args(argv)
 
@@ -204,5 +225,10 @@ def parse_args(argv):
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    script = TomTom_TSP(args.infile, outfile=args.outfile, start=args.startpoint, verbose=args.verbose, plot=args.plot)
+    script = TomTomTSP(args.infile,
+                       outfile=args.outfile,
+                       verbose=args.verbose,
+                       plot=args.plot,
+                       numiter=args.numiter,
+                       macro=args.macro)
     script.run()
