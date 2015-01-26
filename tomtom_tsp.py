@@ -82,6 +82,7 @@ class TomTom_TSP:
         with open(infile, 'r') as fh:
             lines = fh.readlines()
         self.waypoints = set()
+        self.original_order = []
         lineno = 0
         self.logger.debug("Parsing {i}".format(i=infile))
         for line in lines:
@@ -94,7 +95,9 @@ class TomTom_TSP:
                 self.logger.error("Invalid coordinate on line {n}: {l}".format(l=line, n=lineno))
                 continue
             try:
-                self.waypoints.add(complex(float(m.group(2)), float(m.group(3))))
+                c = complex(float(m.group(2)), float(m.group(3)))
+                self.waypoints.add(c)
+                self.original_order.append(c)
             except Exception as ex:
                 self.logger.error("ERROR parsing line {n}: {l}".format(l=line, n=lineno))
                 self.logger.exception(ex)
@@ -107,11 +110,45 @@ class TomTom_TSP:
         self.logger.debug("Calculating exact TSP route...")
         tour = self.exact_TSP(self.waypoints)
         self.logger.debug("Done calculating route.")
-        # OUTPUT HERE
-        print(tour)
-        print(self.total_distance(tour))
+        out = self.output_tour(tour)
+        print(out)
+        if self.outfile is not None:
+            with open(self.outfile, 'w') as fh:
+                fh.write(out)
+            self.logger.info("Output written to: {o}".format(o=out))
+        if self.plot:
+            plt.subplot(211)
+            plt.title("Original")
+            self.plot_tour(self.original_order)
+            plt.subplot(212)
+            plt.title("Optimal Order")
+            self.plot_tour(tour)
+            self.logger.info("Plots written to: {i}.png".format(i=self.infile))
+            plt.savefig('{i}.png'.format(i=self.infile), bbox_inches='tight')
         # look at plotting
 
+    def plot_tour(self, tour):
+        "Apply a TSP algorithm to cities, and plot the resulting tour."
+        # Plot the tour as blue lines between blue circles, and the starting city as a red square.
+        self.plotline(list(tour) + [tour[0]])
+        self.plotline([tour[0]], 'rs')
+
+    def plotline(self, points, style='bo-'):
+        "Plot a list of points (complex numbers) in the 2-D plane."
+        X, Y = self.XY(points)
+        plt.plot(X, Y, style)
+
+    def XY(self, points):
+        "Given a list of points, return two lists: X coordinates, and Y coordinates."
+        return [p.real for p in points], [p.imag for p in points]
+
+    def output_tour(self, tour):
+        """ return TomTom-style string """
+        s = ''
+        for i in tour:
+            s += '/way {r},{i}\n'.format(r=i.real, i=i.imag)
+        return s
+        
     def total_distance(self, tour):
         "The total distance between each pair of consecutive cities in the tour."
         return sum(self.distance(tour[i], tour[i-1]) for i in range(len(tour)))
@@ -128,7 +165,7 @@ class TomTom_TSP:
 
     def shortest(self, tours):
         "Return the tour with the minimum total distance."
-        return min(tours, key=total_distance)
+        return min(tours, key=self.total_distance)
 
     def alltours(self, points):
         "Return a list of tours, each a permutation of cities, but each one starting with the same city."
