@@ -47,8 +47,11 @@ The algorithm and implementation used here is mainly thanks to:
 <http://nbviewer.ipython.org/url/norvig.com/ipython/TSPv3.ipynb>
 
 CHANGELOG:
+2015-01-26 Jason Antman <jason@jasonantman.com>:
+* fix minor bug on line 170
+
 2015-01-25 Jason Antman <jason@jasonantman.com>:
-  - initial version of script
+* initial version of script
 """
 
 import sys
@@ -167,7 +170,7 @@ class TomTomTSP:
         """ return TomTom-style string """
         s = ''
         for i in tour:
-            s += format_point(i) + "\n"
+            s += self.format_point(i) + "\n"
         return s
 
     def format_point(self, p):
