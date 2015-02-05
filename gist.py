@@ -32,6 +32,7 @@ import sys
 import json
 import logging
 from copy import deepcopy
+from ssl import _create_unverified_context
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
@@ -44,7 +45,7 @@ def debug_response(response):
         h='\n'.join(['{k}: {v}\n'.format(k=i[0], v=i[1]) for i in response.getheaders()])
     ))
 
-def gist_write(name, content, token=None, prefix=False):
+def gist_write(name, content, token=None, prefix=False, no_verify=False):
     if prefix:
         name = '{n}_{name}'.format(n=platform.node(), name=name)
         logger.debug("Setting name to: {n}".format(n=name))
@@ -69,7 +70,10 @@ def gist_write(name, content, token=None, prefix=False):
         headers['Authorization'] = 'token {t}'.format(t=token)
         logger.debug("Setting Authorization header to: {h}".format(h=headers['Authorization']))
 
-    conn = httplib.HTTPSConnection("api.github.com")
+    if no_verify:
+        conn = httplib.HTTPSConnection("api.github.com", context=_create_unverified_context())
+    else:
+        conn = httplib.HTTPSConnection("api.github.com")
     logger.debug("Opened connection to https://api.github.com")
     logger.debug("POSTing to /gists")
     conn.request("POST", "/gists", json.dumps(data), headers)
@@ -104,6 +108,8 @@ parser.add_option('-p', '--prefix', dest='prefix', action='store_false',
                   help='prefix gist filename with hostname')
 parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
                   help='verbose output')
+parser.add_option('-V', '--no-verify', dest='no_verify', action='store_true',
+                  default=False, help='do not verify SSL')
 (options, args) = parser.parse_args()
 
 if options.verbose:
@@ -126,5 +132,5 @@ with open(args[0], 'r') as fh:
     content = fh.read()
 
 name = args[0]
-url = gist_write(name, content, token=token, prefix=options.prefix)
+url = gist_write(name, content, token=token, prefix=options.prefix, no_verify=options.no_verify)
 logger.info("Created: {u}".format(u=url))
