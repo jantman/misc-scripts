@@ -31,7 +31,7 @@ import platform
 import sys
 import json
 
-def gist_write(name, content, ext=None, login=None, token=None, prefix=False):
+def gist_write(name, content, ext=None, token=None, prefix=False):
     if ext is None:
         ext = os.path.splitext(name)[1]
 
@@ -48,7 +48,7 @@ def gist_write(name, content, ext=None, login=None, token=None, prefix=False):
     }
 
     headers = {'User-Agent': 'https://github.com/jantman/misc-scripts/blob/master/gist.py'}
-    if not (login is None or token is None):
+    if token is not None:
         headers['Authorization'] = 'token {t}'.format(t=token)
 
     conn = httplib.HTTPSConnection("api.github.com")
@@ -81,9 +81,6 @@ usage = 'USAGE: gist.py [options] filename'
 parser = OptionParser(usage=usage)
 parser.add_option('-d', '--description', dest='description', action='store',
                   type=str, help='Gist description')
-parser.add_option('-u', '--user', dest='user', action='store',
-                  default=None,
-                  type=str, help='GitHub username')
 parser.add_option('-p', '--prefix', dest='prefix', action='store_false',
                   default=True,
                   help='prefix gist filename with hostname')
@@ -101,17 +98,9 @@ if token == '':
     sys.stderr.write("ERROR: empty token\n")
     raise SystemExit(1)
 
-if options.user:
-    user = options.user
-else:
-    user = raw_unput("GitHub Username/Email: ").strip()
-if user == '':
-    sys.stderr.write("ERROR: empty user\n")
-    raise SystemExit(1)
-
 with open(args[0], 'r') as fh:
     content = fh.read()
 
 name = args[0]
-url = gist_write(name, content, login=user, token=token, prefix=options.prefix)
+url = gist_write(name, content, token=token, prefix=options.prefix)
 print("Created: {u}".format(u=url))
