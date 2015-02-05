@@ -30,13 +30,24 @@ from optparse import OptionParser
 import platform
 import sys
 import json
+import logging
+from copy import deepcopy
 
-def gist_write(name, content, ext=None, token=None, prefix=False):
-    if ext is None:
-        ext = os.path.splitext(name)[1]
+FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+logging.basicConfig(level=logging.ERROR, format=FORMAT)
+logger = logging.getLogger(__name__)
 
+def debug_response(response):
+    logger.debug("Response status {s}".format(s=response.status))
+    logger.debug("Response: {d}".format(d=response.read()))
+    logger.debug("Headers: \n{h}".format(
+        h='\n'.join(['{k}: {v}\n'.format(k=i[0], v=i[1]) for i in response.getheaders()])
+    ))
+
+def gist_write(name, content, token=None, prefix=False):
     if prefix:
         name = '{n}_{name}'.format(n=platform.node(), name=name)
+        logger.debug("Setting name to: {n}".format(n=name))
 
     data = {
         'public': False,
@@ -47,35 +58,42 @@ def gist_write(name, content, ext=None, token=None, prefix=False):
         }
     }
 
+    # data debug
+    d = deepcopy(data)
+    if len(d['files'][name]['content']) > 800:
+        tmp = d['files'][name]['content']
+        d['files'][name]['content'] = tmp[:200] + "\n...\n" + tmp[-200:]
+    logger.debug("POST data: {d}".format(d=d))
     headers = {'User-Agent': 'https://github.com/jantman/misc-scripts/blob/master/gist.py'}
     if token is not None:
         headers['Authorization'] = 'token {t}'.format(t=token)
+        logger.debug("Setting Authorization header to: {h}".format(h=headers['Authorization']))
 
     conn = httplib.HTTPSConnection("api.github.com")
+    logger.debug("Opened connection to https://api.github.com")
+    logger.debug("POSTing to /gists")
     conn.request("POST", "/gists", json.dumps(data), headers)
     response = conn.getresponse()
-    ret = None
-    if response.status == 403:
-        sys.stderr.write("ERROR - 403\n")
-        sys.stderr.write("Response:\n{d}\n".format(d=response.read()))
-        sys.stderr.write("Headers:\n")
-        for i in response.getheaders():
-            sys.stderr.write('{k}: {v}\n'.format(k=i[0], v=i[1]))
+    debug_response(response)
+    if response.status == 201:
+        data = response.read()
         conn.close()
-        raise SystemExit(1)
-    elif response.status == 201:
-        data = json.loads(response.read())
-        ret = data['html_url']
-    else:
-        sys.stderr.write("Response status {s}\n".format(s=response.status))
-        sys.stderr.write("Response:\n{d}\n".format(d=response.read()))
-        sys.stderr.write("Headers:\n")
-        for i in response.getheaders():
-            sys.stderr.write('{k}: {v}\n'.format(k=i[0], v=i[1]))
-        conn.close()
-        raise SystemExit(1)
+        try:
+            d = json.loads(data)
+            return(d['html_url'])
+        except:
+            pass
+        logger.error("Got 201 status but no JSON response")
+        logger.debug("Response: \n{d}".format(d=data))
+        h = response.getheaders()
+        for header in h:
+            if header[0] == 'location':
+                url = header[1].replace('api.github.com/gists/', 'gist.github.com/')
+                return url
+        return ''
+    logger.error("ERROR - got response code {s}".format(s=response.status))
     conn.close()
-    return ret 
+    raise SystemExit(1)
 
 usage = 'USAGE: gist.py [options] filename'
 parser = OptionParser(usage=usage)
@@ -84,18 +102,24 @@ parser.add_option('-d', '--description', dest='description', action='store',
 parser.add_option('-p', '--prefix', dest='prefix', action='store_false',
                   default=True,
                   help='prefix gist filename with hostname')
+parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
+                  help='verbose output')
 (options, args) = parser.parse_args()
+
+if options.verbose:
+    logger.setLevel(logging.DEBUG)
+
 if len(args) < 1:
     sys.stderr.write(usage + "\n")
     raise SystemExit(1)
 
 if not os.path.exists(args[0]):
-    sys.stderr.write("ERROR: {f} does not exist\n".format(f=args[0]))
+    logger.error("ERROR: {f} does not exist".format(f=args[0]))
     raise SystemExit(1)
 
 token = raw_input("GitHub API Token: ").strip()
 if token == '':
-    sys.stderr.write("ERROR: empty token\n")
+    logger.error("ERROR: empty token")
     raise SystemExit(1)
 
 with open(args[0], 'r') as fh:
@@ -103,4 +127,4 @@ with open(args[0], 'r') as fh:
 
 name = args[0]
 url = gist_write(name, content, token=token, prefix=options.prefix)
-print("Created: {u}".format(u=url))
+logger.info("Created: {u}".format(u=url))
