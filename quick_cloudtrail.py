@@ -34,7 +34,7 @@ class QuickCloudtrail:
     json_re = re.compile(r'^.+CloudTrail.+\.json$')
     logs = []
 
-    def __init__(self, logger=None, verbose=0):
+    def __init__(self, logdir, logger=None, verbose=0):
         """ init method, run at class creation """
         # setup a logger; allow an existing one to be passed in to use
         self.logger = logger
@@ -44,11 +44,12 @@ class QuickCloudtrail:
             self.logger.setLevel(logging.DEBUG)
         elif verbose > 0:
             self.logger.setLevel(logging.INFO)
-        files = [ f for f in os.listdir('./') if ( os.path.isfile(f) and self.json_re.match(f) ) ]
-        self.logger.info("Found {c} CloudTrail log JSON files".format(c=len(files)))
+        self.logdir = logdir
+        files = [ f for f in os.listdir(logdir) if ( os.path.isfile(os.path.join(logdir, f)) and self.json_re.match(f) ) ]
+        self.logger.info("Found {c} CloudTrail log JSON files in {l}".format(c=len(files), l=logdir))
         for f in files:
             self.logger.debug("Parsing {f}".format(f=f))
-            with open(f, 'r') as fh:
+            with open(os.path.join(logdir, f), 'r') as fh:
                 data = json.loads(fh.read())['Records']
                 self.logger.debug("Found {c} records in {f}".format(
                     c=len(data),
@@ -56,45 +57,69 @@ class QuickCloudtrail:
                 self.logs.extend(data)
         self.logger.info("Parsed {c} records.".format(c=len(self.logs)))
 
-    def search_user(self, user):
-        """find all logs relating to the specified IAM user name substring"""
+    def search_user(self, users):
+        """find all logs relating to the specified IAM user name substring(s)"""
         res = []
         for i in self.logs:
             if 'userIdentity' not in i:
                 continue
             if 'userName' not in i['userIdentity']:
                 continue
-            if user.lower() in i['userIdentity']['userName'].lower():
-                res.append(i)
-        self.logger.info("Found {c} matches.".format(c=len(res)))
+            for u in users:
+                if u.lower() in i['userIdentity']['userName'].lower():
+                    res.append(i)
+                    break
         return res
 
-    def search_request(self, req_id):
-        """find all logs for the specified request ID"""
+    def search_request(self, req_ids):
+        """find all logs for the specified request ID(s)"""
         res = []
         for i in self.logs:
             if 'requestID' not in i:
                 continue
-            if i['requestID'].lower() == req_id.lower():
-                res.append(i)
-        self.logger.info("Found {c} matches.".format(c=len(res)))
+            for rid in req_ids:
+                if i['requestID'].lower() == rid.lower():
+                    res.append(i)
+                    break
         return res
 
-    def search_source_ip(self, src_ip):
-        """find all logs for the specified source IP"""
+    def search_source_ip(self, src_ips):
+        """find all logs for the specified source IP(s)"""
         res = []
         for i in self.logs:
             if 'sourceIPAddress' not in i:
                 continue
-            if i['sourceIPAddress'].lower() == req_id.lower():
-                res.append(i)
-        self.logger.info("Found {c} matches.".format(c=len(res)))
+            for sip in src_ips:
+                if i['sourceIPAddress'].lower() == sip.lower():
+                    res.append(i)
+                    break
         return res
 
     def format_log(self, rec):
         """format a log record as a human-readable string"""
         s = pformat(rec)
         return s
+
+    def search(self, search_type, query, error_only=False):
+        """wrapper around search functions"""
+        func_name = "search_{s}".format(s=search_type)
+        fn = getattr(self, func_name)
+        res = fn(query)
+        self.logger.debug("Search function {f} found {c} matches.".format(
+            c=len(res),
+            f=func_name))
+        if error_only:
+            tmp = []
+            for r in res:
+                if 'errorCode' in r or 'errorMessage' in r:
+                    tmp.append(r)
+        else:
+            tmp = res
+        if len(tmp) == 1:
+            self.logger.info("Found 1 match.")
+        else:
+            self.logger.info("Found {c} matches.".format(c=len(tmp)))
+        return tmp
 
 def parse_args(argv):
     """
@@ -104,35 +129,42 @@ def parse_args(argv):
     see: <https://docs.python.org/2/library/argparse.html>
     """
     pwd = os.getcwd()
-    p = argparse.ArgumentParser(description='Sample python script skeleton.')
+    epil = "Query Types:\n"
+    for i in dir(QuickCloudtrail):
+        if i.startswith('search_'):
+            epil += "  {i} - {d}\n".format(i=i[7:],
+                                           d=getattr(QuickCloudtrail, i).__doc__)
+    p = argparse.ArgumentParser(description='Simple AWS CloudTrail JSON log searcher.',
+                                epilog=epil,
+                                formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
                    help='verbose output. specify twice for debug-level output.')
     p.add_argument('-d', '--logdir', dest='logdir', action='store', type=str,
                    default=pwd,
                    help='directory containing JSON logs (default ./)')
-    p.add_argument('-u', '--iam-user-name', dest='user', action='store', type=str,
-                   help='search for IAM user with name containing this string')
-    p.add_argument('-r', '--request-id', dest='request', action='store', type=str,
-                   help='search for specific request ID')
-    p.add_argument('-s', '--source-ip', dest='source_ip', action='store', type=str,
-                   help='search for requests from specified source IP')
+    p.add_argument('-e', '--errors-only', dest='error_only', action='store_true',
+                   default=False,
+                   help='return only records with an errorCode or errorMessage')
+    p.add_argument('search_type', metavar='SEARCH_TYPE', type=str,
+                   help='type of search to perform')
+    p.add_argument('query', metavar='QUERY', type=str, nargs='+',
+                   help='Search query (can be specified multiple times). Any\n'
+                   'records with an appropriate value containing this string\n'
+                   '(case-insensitive) will be matched.')
+
     args = p.parse_args(argv)
 
     return args
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    qt = QuickCloudtrail(verbose=args.verbose)
-    if args.user:
-        res = qt.search_user(args.user)
-    elif args.request:
-        res = qt.search_request(args.request)
-    elif args.source_ip:
-        res = qt.search_source_ip(args.source_ip)
-    else:
-        sys.stderr.write("ERROR: please specify a search parameter (see --help)\n")
+    search_func_name = "search_{s}".format(s=args.search_type)
+    if search_func_name not in dir(QuickCloudtrail):
+        sys.stderr.write("ERROR: {s} is not a valid search type.\n".format(
+            s=args.search_type))
         raise SystemExit(1)
-
+    qt = QuickCloudtrail(args.logdir, verbose=args.verbose)
+    res = qt.search(args.search_type, args.query, error_only=args.error_only)
     if len(res) < 1:
         raise SystemExit(0)
     for r in res:
