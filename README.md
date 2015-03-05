@@ -10,6 +10,7 @@ I'll try and update this readme with descriptions of all of the scripts.
 Unless otherwise noted, these are distributed under the terms of the LICENSE
 file.
 
+* __add_team_to_github_org_repos.py__ - Python script to add a given GitHub Team to all of the specified Organization's repositories.
 * __apache_log_verify_site_move.py__ - Python script that parses Apache HTTPD access logs, finds all unique URLs, and compares the current HTTP response code to that of another server. Useful when moving a site.
 * __bigipcookie.pl__ - Perl script to de/encode F5 BigIp persistence cookies.
 * __check_url_list.py__ - Script to check a list of URLs (passed on stdin) for response code, and for response code of the final path in a series of redirects.
