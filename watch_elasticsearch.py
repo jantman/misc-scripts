@@ -22,6 +22,9 @@ CHANGELOG:
 
 2015-02-04 jantman:
 - initial script
+
+2015-03-25 jantman:
+- add unassigned shard count to output
 """
 
 import sys
@@ -67,11 +70,13 @@ def main(host, port, sleeptime=10, pushover=False):
             time.sleep(sleeptime)
             continue
         logger.debug("Got cluster status: status={s} timed_out={t} "
-                     "initializing_shards={i} relocating_shards={r}".format(
+                     "initializing_shards={i} relocating_shards={r}"
+                     " unassigned_shards={u}".format(
                          s=s['status'],
                          t=s['timed_out'],
                          i=s['initializing_shards'],
-                         r=s['relocating_shards']))
+                         r=s['relocating_shards'],
+                         u=s['unassigned_shards']))
         if s['timed_out'] != status['timed_out']:
             change = "Cluster timed_out changed from {o} to {n}".format(
                 o=status['timed_out'],
@@ -87,11 +92,12 @@ def main(host, port, sleeptime=10, pushover=False):
         status = s
         time.sleep(sleeptime)
 
-    msg = '{h}:{p} {c} (shards: {i} initializing, {r} relocating)'.format(h=host,
-                                                                          p=port,
-                                                                          c=change,
-                                                                          i=s['initializing_shards'],
-                                                                          r=s['relocating_shards'])
+    msg = '{h}:{p} {c} (shards: {i} initializing, {r} relocating, {u} unassigned)'.format(h=host,
+                                                                                          p=port,
+                                                                                          c=change,
+                                                                                          i=s['initializing_shards'],
+                                                                                          r=s['relocating_shards'],
+                                                                                          u=s['unassigned_shards'])
     if s['status'] == 'green' and not s['timed_out']:
         # I got better!
         logger.info(msg)
@@ -113,7 +119,8 @@ def cluster_status(es):
         'initializing_shards': h['initializing_shards'],
         'relocating_shards': h['relocating_shards'],
         'timed_out': h['timed_out'],
-        'status': h['status']
+        'status': h['status'],
+        'unassigned_shards': h['unassigned_shards'],
     }
 
 def notify_pushover(is_success, msg):
