@@ -14,26 +14,50 @@
 #  <https://github.com/jantman/misc-scripts/blob/master/savescreen.py>
 #
 # CHANGELOG:
-# 2014-07-24
+# 2014-07-24 Jason Antman <jason@jasonantman.com>
 #   * first public version
 #
-# 2014-07-25
+# 2014-07-25 Jason Antman <jason@jasonantman.com>
 #   * restored windows should go to their last PWD, set in ~/.bashrc
 #     (see <http://blog.jasonantman.com/2014/07/session-save-and-restore-with-bash-and-gnu-screen/>)
+#
+# 2015-03-26 Jason Antman <jason@jasonantman.com>
+#   * add lockfile to prevent runaway cron processes
 #
 ####################################################
 
 import subprocess
 import re
 import os.path
+import os
 from platform import node
 from datetime import datetime
 import sys
+import atexit
 
 # TODO: if I change anything else in this script, switch to optparse and logging
 verbose = False
 if '-v' in sys.argv or '--verbose' in sys.argv:
     verbose = True
+
+lockfile_path = os.path.abspath(os.path.expanduser('~/.savescreen.lock'))
+
+def clear_lockfile():
+    os.unlink(lockfile_path)
+
+# exit handler to clear lockfile
+atexit.register(clear_lockfile)
+
+def touch(path):
+    with open(path, 'a'):
+        os.utime(path, None)
+
+# check for lockfile
+if os.path.exists(lockfile_path):
+    print("ERROR: lockfile already exists at %s; exiting" % lockfile_path)
+    raise SystemExit(1)
+
+touch(lockfile_path)
 
 # get the window list
 windowstr = subprocess.check_output(['screen', '-Q', 'windows']).decode()
