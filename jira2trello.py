@@ -43,6 +43,8 @@ Free for any use provided that patches are submitted back to me.
 
 2015-04-01 Jason Antman <jason@jasonantman.com>:
   - initial version
+2015-04-09 Jason Antman <jason@jasonantman.com>:
+  - fix for missing issue.fields.aggregatetimeoriginalestimate attribute
 """
 
 import sys
@@ -53,6 +55,7 @@ import imp
 import textwrap
 import re
 import math
+from pprint import pprint
 
 from trello import TrelloApi
 from jira import JIRA
@@ -165,7 +168,8 @@ class JiraToTrello:
             return
         # check time tracking
         tt = ''
-        if issue.fields.aggregatetimeoriginalestimate is not None:
+        if ( hasattr(issue.fields, 'aggregatetimeoriginalestimate') and 
+             issue.fields.aggregatetimeoriginalestimate is not None):
             tt = '({t}) '.format(
                 t=self.humantime(issue.fields.aggregatetimeoriginalestimate)
             )
