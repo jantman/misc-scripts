@@ -21,7 +21,8 @@ capture group of this value should be the ticket ID in Jira.
 ## Requirements
 
 - python 2.7 (for the `imp` module)
-- the ``trello`` package from PyPi (tested with 0.9.1)
+- the [trello](https://pypi.python.org/pypi/trello) package from PyPi (tested with 0.9.1)
+- the [jira](https://pypi.python.org/pypi/jira) package from PyPi (tested with 0.46)
 
 
 ## Configuration
