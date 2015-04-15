@@ -20,6 +20,9 @@ CHANGELOG:
 
 2015-02-05 jantman:
 - initial script
+
+2015-04-15 jantman:
+- catch error on ssl import and disable no_verify option
 """
 
 import httplib
@@ -32,11 +35,17 @@ import sys
 import json
 import logging
 from copy import deepcopy
-from ssl import _create_unverified_context
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 logger = logging.getLogger(__name__)
+
+try:
+    from ssl import _create_unverified_context
+    have_ssl = True
+except ImportError:
+    logger.error("ERROR - could not import ssl._create_unverified_context; unable to disable SSL cert verification")
+    have_ssl = False
 
 def debug_response(response):
     logger.debug("Response status {s}".format(s=response.status))
@@ -114,6 +123,10 @@ parser.add_option('-V', '--no-verify', dest='no_verify', action='store_true',
 
 if options.verbose:
     logger.setLevel(logging.DEBUG)
+
+if options.no_verify and not have_ssl:
+    logger.error("ERROR: could not import ssl._create_unverified_context; therefore unable to disable SSL cert verification")
+    raise SystemExit(1)
 
 if len(args) < 1:
     sys.stderr.write(usage + "\n")
