@@ -24,6 +24,7 @@ file.
 * __dumpMysqlGrants.sh__ - Script to dump all grants from a MySQL server, for input into another.
 * __dump_skype_logs.py__ - Script to dump all Skype logs from a main.db file to HTML
 * __find_outdated_puppets.py__ - Script to look at a Puppet Dashboard unhidden-nodes.csv and extract the latest report time for each node, optionally, list nodes with runtime BEFORE a string.
+* __find_test_order_problems.py__ - Script to run tests multiple times and analyze JUnit results XML, to find tests with order-dependent failures.
 * __firefox_recovery_to_html.py__ - Script to convert Firefox profile sessionstore-backups/recovery.js to HTML links
 * __get_addons.py__ - Unmaintained script to download WoW addons from CurseForge.
 * __gist.py__ - Simple python script to upload a file as a private Gist on GitHub. Prompts interactively for Auth token, so usable from shared servers.
