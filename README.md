@@ -49,6 +49,7 @@ file.
 * __nmap-xml-to-table.php__ - Script to transform multiple nmap XML output files (presumably of the same host/port range with different scan options) into a HTML table
 * __print-cmd.sh__ - Simple script to log environment variables and original command for forced ssh commands
 * __print-cmd-wrapper.c__ - C wrapper like cmd-wrapper.c, but just echoes back the command that was called
+* __pushover__ - script to wrap execution of a command and send [Pushover](https://pushover.net/) and ``notify-send`` notifications about its duration and exit code.
 * __quick_cloudtrail.py__ - Python script to parse AWS CloudTrail log JSON files and search for a user, IP, request ID, etc.
 * __README.VCS__ - Note on my CVS/SVN to github migration
 * __rebuild_srpm.sh__ - Script to rebuild a SRPM 1:1, useful when you want to build a RHEL/CentOS 6 SRPM on a RHEL/CentOS 5 system that doesn't support newer compression (cpio: MD5 sum mismatch)
