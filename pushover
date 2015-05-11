@@ -5,9 +5,6 @@
 #
 # uses pushover.sh from https://raw.githubusercontent.com/jnwatts/pushover.sh/master/pushover.sh
 #
-# You need to either export PUSHOVER_API_KEY and PUSHOVER_USER_KEY, or set them in
-# ~/.pushover_keys.sh
-#
 ###################################################################################
 #
 # Copyright 2015 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
@@ -28,9 +25,12 @@
 #
 ###################################################################################
 #
-# Version 1.0.0
+# Version 1.0.1
 #
 # CHANGELOG:
+#
+# * 1.0.1 2015-05-11 Jason Antman <jason@jasonantman.com>
+#   * swith from env vars for pushover keys to ~/.config/pushover.conf
 #
 # * 1.0.0 2015-05-11 Jason Antman <jason@jasonantman.com>
 #   * Initial public version
@@ -41,18 +41,6 @@
 if ! which pushover.sh > /dev/null 2>&1; then
     >&2 echo "ERROR: pushover.sh not found; please put in path (download from https://raw.githubusercontent.com/jnwatts/pushover.sh/master/pushover.sh)"
     exit 1
-fi
-
-[[ -f ~/.pushover_keys.sh ]] && source ~/.pushover_keys.sh
-
-if [ -z "$PUSHOVER_API_KEY" ]; then
-    >&2 echo "ERROR: export PUSHOVER_API_KEY or set in ~/.pushover_keys.sh"
-    exit 2
-fi
-
-if [ -z "$PUSHOVER_USER_KEY" ]; then
-    >&2 echo "ERROR: export PUSHOVER_USER_KEY or set in ~/.pushover_keys.sh"
-    exit 3
 fi
 
 stime=$(date '+%s')
@@ -68,13 +56,13 @@ times=$(printf '%d:%02d:%02d' $dh $dm $ds)
 # end timer
 if [ "$exitcode" -eq 0 ]
 then
-    pushover.sh -p 0 -t "Command Succeeded" -T "$APIKEY" -U "$USERKEY" "succeeded in ${times} on $(hostname): $@ (in $(pwd))"
+    pushover.sh -p 0 -t "Command Succeeded" "succeeded in ${times} on $(hostname): $@ (in $(pwd))"
     echo "(sent pushover success notification)"
     if which notify-send 2>&1 > /dev/null; then
         notify-send "Command Succeeded" "succeeded in ${times}: $@ (in $(pwd))"
     fi
 else
-    pushover.sh -p 0 -s falling -t "Command Failed" -T "$APIKEY" -U "$USERKEY" "failed in ${times} (exit $exitcode) on $(hostname): $@ (in $(pwd))"
+    pushover.sh -p 0 -s falling -t "Command Failed" "failed in ${times} (exit $exitcode) on $(hostname): $@ (in $(pwd))"
     echo "(sent pushover failure notification)"
     if which notify-send 2>&1 > /dev/null; then
         notify-send "Command Failed" "failed in ${times} (exit $exitcode): $@ (in $(pwd))"
