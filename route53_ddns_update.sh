@@ -13,12 +13,17 @@
 # <https://github.com/jantman/misc-scripts/blob/master/route53_ddns_update.sh>
 #
 # CHANGELOG:
-# * 2014-12-26 Jason Antman <jason@jasonantman.com>
-# - initial script
+#
+# * 2015-05-31 Jason Antman <jason@jasonantman.com>
+# - update for new whatismyip.jasonantman.com
 #
 # * 2015-05-20 Jason Antman <jason@jasonantman.com>
 # - fix bug in WAN_IP
 # - add logging
+#
+# * 2014-12-26 Jason Antman <jason@jasonantman.com>
+# - initial script
+#
 #################################################
 
 # CONFIGURATION
@@ -38,7 +43,7 @@ log_err () {
 
 log "Running with ZONE=${ZONE} RR=${RR}"
 
-WAN_IP=$(wget -O - -U wget/route53_ddns_update.sh/iponly http://whatismyip.jasonantman.com)
+WAN_IP=$(wget -O - -U wget/route53_ddns_update.sh/iponly 'http://whatismyip.jasonantman.com/?format=plain&only=ip')
 log "Found current WAN IP as ${WAN_IP}"
 
 # Get your old WAN IP
