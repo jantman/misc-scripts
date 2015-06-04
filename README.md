@@ -13,6 +13,7 @@ file.
 * __add_team_to_github_org_repos.py__ - Python script to add a given GitHub Team to all of the specified Organization's repositories.
 * __apache_log_verify_site_move.py__ - Python script that parses Apache HTTPD access logs, finds all unique URLs, and compares the current HTTP response code to that of another server. Useful when moving a site.
 * __bigipcookie.pl__ - Perl script to de/encode F5 BigIp persistence cookies.
+* __centos7_rpmbuild.Vagrantfile__ - Vagrantfile for a CentOS7 machine with all requirements to build RPMs
 * __check_url_list.py__ - Script to check a list of URLs (passed on stdin) for response code, and for response code of the final path in a series of redirects.
 * __cmd-wrapper.c__ - C wrapper for a setuid/gid command, to ensure that ONLY a certain command and args can be run.
 * __collectRsyslogInfo.php__ - Script to collect information on a crashed/hung rsyslogd process, and log it all somewhere.
