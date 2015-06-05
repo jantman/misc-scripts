@@ -62,8 +62,9 @@ class GitWorkGraph:
     def run(self, author_name, num_days, tzname):
         """Run everything..."""
         # find git repositories
-        localtz = pytz.timezone(tzname)
         logger.info("Only examining commits since {n} days ago".format(n=num_days))
+        localtz = pytz.timezone(tzname)
+        logger.info("Using local timezone '{l}' ({z})".format(z=localtz.zone, l=tzname))
         repos = []
         for d in self.repodirs:
             res = self.find_git_repos(d)
@@ -77,7 +78,7 @@ class GitWorkGraph:
         # find relevant commit data in each repo
         repo_data = self.do_repos(repos, author_name, num_days, localtz)
         alt_repo_data = self.do_repos(alt_repos, author_name, num_days, localtz)
-        self.plot(repo_data, alt_repo_data, localtz)
+        self.plot(repo_data, alt_repo_data, author_name, num_days, localtz)
 
     def do_repos(self, repolist, author_name, num_days, localtz):
         """
@@ -187,7 +188,7 @@ class GitWorkGraph:
             data.append(d_list)
         return data
 
-    def plot(self, repo_data, alt_repo_data, localtz):
+    def plot(self, repo_data, alt_repo_data, author_name, num_days, localtz):
         """
         Draw the plot
         see:
@@ -198,48 +199,38 @@ class GitWorkGraph:
         data = np.array(data)
         rows = [str(x) for x in range(24)]
         columns = self.day_names
-        # Basic Syntax
-        plt.pcolor(data)
-        """
-        # Add Row/Column Labels
-        plt.pcolor(data)
-        plt.xticks(np.arange(0,6)+0.5,columns)
-        plt.yticks(np.arange(0,10)+0.5,rows)
-        # Change color map
-        plt.pcolor(data,cmap=plt.cm.Reds,edgecolors='k')
-        plt.xticks(np.arange(0,6)+0.5,columns)
-        plt.yticks(np.arange(0,10)+0.5,rows)
-        #  Finishing Touches
+        # plot the data
         fig,ax=plt.subplots()
-        # using the ax subplot object, we use the same
-        # syntax as above, but it allows us a little
-        # bit more advanced control
-        ax.pcolor(data,cmap=plt.cm.Reds,edgecolors='k')
-        ax.set_xticks(np.arange(0,6)+0.5)
-        ax.set_yticks(np.arange(0,10)+0.5)
+        # this uses the "Reds" color map
+        #ax.pcolor(data,cmap=plt.cm.Reds,edgecolors='k')
+        heatmap = ax.pcolor(data,edgecolors='k', vmin=-1, vmax=1, cmap=plt.cm.bwr)
+        # axis ticks
+        ax.set_xticks(np.arange(0,7)+0.5)
+        ax.set_yticks(np.arange(0,24)+0.5)
 
-        # Here we put the x-axis tick labels
-        # on the top of the plot.  The y-axis
-        # command is redundant, but inocuous.
-        ax.xaxis.tick_top()
+        # set sides of plot for ticks
+        ax.xaxis.tick_bottom()
         ax.yaxis.tick_left()
-        # similar syntax as previous examples
-        ax.set_xticklabels(columns,minor=False,fontsize=20)
-        ax.set_yticklabels(rows,minor=False,fontsize=20)
+        # set tick labels
+        ax.set_xticklabels(columns,minor=False,fontsize=16)
+        ax.set_yticklabels(rows,minor=False,fontsize=16)
+        # legend
+        cb = fig.colorbar(heatmap, ticks=[-1, 0, 1], spacing='uniform')
+        cb.set_ticklabels([self.alt_label, 'None', self.label])
 
         # Here we use a text command instead of the title
         # to avoid collision between the x-axis tick labels
         # and the normal title position
-        plt.text(0.5,1.08,'Main Plot Title',
-                          fontsize=25,
+        plt.text(0.5,1.08,'Commits by {a} - last {n} days'.format(a=author_name, n=num_days),
+                          fontsize=22,
                           horizontalalignment='center',
                           transform=ax.transAxes
                           )
 
         # standard axis elements
-        plt.ylabel('Y Axis Label',fontsize=20)
-        plt.xlabel('X Axis Label',fontsize=20)
-        """
+        plt.ylabel('Hour of Day ({z})'.format(z=localtz.zone),fontsize=20)
+        plt.xlabel('Day of Week',fontsize=20)
+        # write file
         fname = 'plot.png'
         plt.savefig(fname)
         fpath = os.path.abspath(fname)
