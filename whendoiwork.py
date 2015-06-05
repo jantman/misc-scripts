@@ -58,6 +58,8 @@ class GitWorkGraph:
         self.alt_repodirs = alt_repodirs
         self.label = label
         self.alt_label = alt_label
+        self.num_commits = 0
+        self.num_repos = 0
 
     def run(self, author_name, num_days, tzname):
         """Run everything..."""
@@ -78,6 +80,7 @@ class GitWorkGraph:
         # find relevant commit data in each repo
         repo_data = self.do_repos(repos, author_name, num_days, localtz)
         alt_repo_data = self.do_repos(alt_repos, author_name, num_days, localtz)
+        logger.info("Found {n} commits in {r} repos.".format(n=self.num_commits, r=self.num_repos))
         self.plot(repo_data, alt_repo_data, author_name, num_days, localtz)
 
     def do_repos(self, repolist, author_name, num_days, localtz):
@@ -89,7 +92,9 @@ class GitWorkGraph:
         for x in range(7):
             data[x] = {y: 0 for y in range(24)}
         for repo in repolist:
+            self.num_repos += 1
             commit_dates = self.do_repo(repo, author_name, num_days)
+            self.num_commits += len(commit_dates)
             for dt_utc in commit_dates:
                 dt_local = dt_utc.astimezone(localtz)
                 data[dt_local.weekday()][dt_local.hour] += 1
@@ -116,18 +121,24 @@ class GitWorkGraph:
         for sha in repo.git.log(walk_reflogs=True, author=author_name, pretty='%H', since='{n} days ago'.format(n=num_days)).split("\n"):
             if sha in seen_commits:
                 continue
-            c = repo.commit(sha)
-            a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
-            keep_commits.append(a_dt)
-            seen_commits.append(sha)
+            try:
+                c = repo.commit(sha)
+                a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
+                keep_commits.append(a_dt)
+                seen_commits.append(sha)
+            except Exception as ex:
+                logger.exception(ex)
         # all refs
         for sha in repo.git.log(all=True, pretty='%H').split("\n"):
             if sha in seen_commits:
                 continue
-            c = repo.commit(sha)
-            a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
-            keep_commits.append(a_dt)
-            seen_commits.append(sha)
+            try:
+                c = repo.commit(sha)
+                a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
+                keep_commits.append(a_dt)
+                seen_commits.append(sha)
+            except Exception as ex:
+                logger.exception(ex)
         # danging or orphaned
         for line in repo.git.fsck().split("\n"):
             parts = line.split(' ')
@@ -140,9 +151,10 @@ class GitWorkGraph:
                 a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
                 keep_commits.append(a_dt)
                 seen_commits.append(sha)
-                print("Checked fsck commit {s}".format(s=parts[-1]))
             except ValueError as ex:
                 logger.debug(ex.message)
+            except Exception as ex:
+                logger.exception(ex)
         logger.debug("Found {l} commits (with specified author name and since cutoff date) in repo.".format(l=len(keep_commits)))
         return keep_commits
 
@@ -216,13 +228,13 @@ class GitWorkGraph:
         ax.set_yticklabels(rows,minor=False,fontsize=16)
         # legend
         cb = fig.colorbar(heatmap, ticks=[-1, 0, 1], spacing='uniform')
-        cb.set_ticklabels([self.alt_label, 'None', self.label])
+        cb.set_ticklabels([self.alt_label, '', self.label])
 
         # Here we use a text command instead of the title
         # to avoid collision between the x-axis tick labels
         # and the normal title position
-        plt.text(0.5,1.08,'Commits by {a} - last {n} days'.format(a=author_name, n=num_days),
-                          fontsize=22,
+        plt.text(0.5,1.08,'Commits by "{a}" - {c} in {r} repos in last {n} days'.format(a=author_name, n=num_days, c=self.num_commits, r=self.num_repos),
+                          fontsize=16,
                           horizontalalignment='center',
                           transform=ax.transAxes
                           )
