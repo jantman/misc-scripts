@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 """
-whendoiwork
+whendoiwork.py
 
 Script to find all git repositories in a list of local filesystem paths,
 iterate over all commits in them (in the last N days), and build a histogram
 of the day of week and hour of day of your commits (using information from your
 git configuration).
+
+The graph is simple - a commit in repoA counts as +1, a commit in repoB counts as -1.
+The scale goes from the maximum repoB/negative (dark blue) to the maximum repoA/positive
+(dark red).
 
 ####################################################################################
 
@@ -15,6 +19,11 @@ pytz
 tzlocal (1.1.2)
 matplotlib (1.4.2)
 numpy (1.9.1)
+
+####################################################################################
+
+USAGE:
+
 
 ####################################################################################
 
@@ -61,7 +70,7 @@ class GitWorkGraph:
         self.num_commits = 0
         self.num_repos = 0
 
-    def run(self, author_name, num_days, tzname):
+    def run(self, author_name, num_days, tzname, png_fname):
         """Run everything..."""
         # find git repositories
         logger.info("Only examining commits since {n} days ago".format(n=num_days))
@@ -81,7 +90,7 @@ class GitWorkGraph:
         repoA_data = self.do_repos(repoAs, author_name, num_days, localtz)
         repoB_data = self.do_repos(repoBs, author_name, num_days, localtz)
         logger.info("Found {n} commits in {r} repos.".format(n=self.num_commits, r=self.num_repos))
-        self.plot(repoA_data, repoB_data, author_name, num_days, localtz)
+        self.plot(repoA_data, repoB_data, author_name, num_days, localtz, png_fname)
 
     def do_repos(self, repolist, author_name, num_days, localtz):
         """
@@ -112,11 +121,6 @@ class GitWorkGraph:
         keep_commits = []
         seen_commits = []
         # we filter by author and date here in the `git log` command
-        #################################################################################################################
-        # @TODO ok, even this isn't getting us ALL the commits. In fact, on my current branch in my sample repo,
-        # `git log -g` is showing 45 commits whereas `git log` shows 113...
-        # https://groups.google.com/d/topic/git-python/U2uQIZv-iMA/discussion
-        #################################################################################################################
         # dangling commits via reflog
         for sha in repo.git.log(walk_reflogs=True, author=author_name, pretty='%H', since='{n} days ago'.format(n=num_days)).split("\n"):
             if sha in seen_commits:
@@ -172,53 +176,42 @@ class GitWorkGraph:
         Take the two nested dicts of per-day, per-hour data and convert
         them to a numpy array for plotting.
 
-        First we find the maximum number of commits per hour ever, c_max.
-
-        Each array element is a float from -1 to 1, where 1 is c_max commits
-        being done for repoA_data repos, and -1 is c_max commits being done
-        for repoB_data repos, and 0 is no commits.
+        We count reboA commits positively and repoB commits negatively.
         """
-        # find the most commits per hour
-        c_max = 0
-        for t in [repoA_data, repoB_data]:
-            for day in t:
-                for hour in t[day]:
-                    if t[day][hour] > c_max:
-                        c_max = t[day][hour]
-        c_max = c_max * 1.0
-        logger.debug("Max commits per hour: {c}".format(c=c_max))
         data = []
+        amax = 0
+        bmax = 0
         for hour in range(24):
             d_list = []
             for day in range(7):
-                r = repoA_data[day][hour] * 1.0
-                a = repoB_data[day][hour] * 1.0
-                r_p = r / c_max
-                a_p = a / c_max
-                t = r_p - a_p
-                d_list.append(t)
+                if repoA_data[day][hour] > amax:
+                    amax = repoA_data[day][hour]
+                if repoB_data[day][hour] > amax:
+                    bmax = repoB_data[day][hour]
+                d_list.append(repoA_data[day][hour] - repoB_data[day][hour])
             data.append(d_list)
-        return data
+        return (data, amax, (bmax * -1))
 
-    def plot(self, repoA_data, repoB_data, author_name, num_days, localtz):
+    def plot(self, repoA_data, repoB_data, author_name, num_days, localtz, png_fname):
         """
         Draw the plot
         see:
         * http://www.bertplot.com/visualization/?p=292
         """
         logger.info("Beginning to plot data")
-        data = self.make_plot_data(repoA_data, repoB_data)
+        (data, vmax, vmin) = self.make_plot_data(repoA_data, repoB_data)
         data = np.array(data)
         rows = [str(x) for x in range(24)]
         columns = self.day_names
         # plot the data
         fig,ax=plt.subplots()
         # this uses the "Reds" color map
-        #ax.pcolor(data,cmap=plt.cm.Reds,edgecolors='k')
-        heatmap = ax.pcolor(data,edgecolors='k', vmin=-1, vmax=1, cmap=plt.cm.bwr)
+        heatmap = ax.pcolor(data,edgecolors='k', cmap=plt.cm.bwr, vmin=vmin, vmax=vmax)
         # axis ticks
         ax.set_xticks(np.arange(0,7)+0.5)
         ax.set_yticks(np.arange(0,24)+0.5)
+        # y-axis maximum
+        ax.set_ylim([0, 24])
 
         # set sides of plot for ticks
         ax.xaxis.tick_bottom()
@@ -227,7 +220,7 @@ class GitWorkGraph:
         ax.set_xticklabels(columns,minor=False,fontsize=16)
         ax.set_yticklabels(rows,minor=False,fontsize=16)
         # legend
-        cb = fig.colorbar(heatmap, ticks=[-1, 0, 1], spacing='uniform')
+        cb = fig.colorbar(heatmap, ticks=[vmin, 0, vmax], spacing='uniform')
         cb.set_ticklabels([self.alt_label, '', self.label])
 
         # Here we use a text command instead of the title
@@ -242,10 +235,9 @@ class GitWorkGraph:
         plt.ylabel('Hour of Day ({z})'.format(z=localtz.zone),fontsize=20)
         plt.xlabel('Day of Week',fontsize=20)
         # write file
-        fname = 'plot.png'
-        plt.savefig(fname)
-        fpath = os.path.abspath(fname)
-        logger.info("Plot saved to {f} <file://{a}>".format(f=fname, a=fpath))
+        plt.savefig(png_fname)
+        fpath = os.path.abspath(png_fname)
+        logger.info("Plot written to {f} <file://{a}>".format(f=png_fname, a=fpath))
 
 
 def get_git_user_name():
@@ -284,6 +276,8 @@ def parse_args(argv):
                    help='number of days of history to search; default 365')
     p.add_argument('-t', '--timezone', action='store', type=str, default='UTC',
                    help='timezone to show commits in, as a string passed to pytz.timezone() (default: UTC)')
+    p.add_argument('-p', '--png-file', action='store', type=str, default='./whendoiwork.png',
+                   help='file path to write the PNG graph at')
 
     args = p.parse_args(argv)
 
@@ -298,4 +292,4 @@ if __name__ == "__main__":
         label=args.repoAlabel,
         alt_label=args.repoBlabel,
     )
-    script.run(args.author_name, args.days, args.timezone)
+    script.run(args.author_name, args.days, args.timezone, args.png_file)
