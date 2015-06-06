@@ -234,7 +234,6 @@ class GitWorkGraph:
         # to avoid collision between the x-axis tick labels
         # and the normal title position
         plt.text(0.5,1.08,'Commits by "{a}" - {c} in {r} repos in last {n} days'.format(a=author_name, n=num_days, c=self.num_commits, r=self.num_repos),
-                          fontsize=16,
                           horizontalalignment='center',
                           transform=ax.transAxes
                           )
