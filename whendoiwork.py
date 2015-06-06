@@ -51,11 +51,11 @@ class GitWorkGraph:
 
     day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-    def __init__(self, repodirs=[], alt_repodirs=[], label='repos', alt_label='alt_repos', verbose=0):
+    def __init__(self, repoAdirs=[], repoBdirs=[], label='repoAs', alt_label='repoBs', verbose=0):
         if verbose:
             logger.setLevel(logging.DEBUG)
-        self.repodirs = repodirs
-        self.alt_repodirs = alt_repodirs
+        self.repoAdirs = repoAdirs
+        self.repoBdirs = repoBdirs
         self.label = label
         self.alt_label = alt_label
         self.num_commits = 0
@@ -67,21 +67,21 @@ class GitWorkGraph:
         logger.info("Only examining commits since {n} days ago".format(n=num_days))
         localtz = pytz.timezone(tzname)
         logger.info("Using local timezone '{l}' ({z})".format(z=localtz.zone, l=tzname))
-        repos = []
-        for d in self.repodirs:
+        repoAs = []
+        for d in self.repoAdirs:
             res = self.find_git_repos(d)
             logger.debug("Found {c} repos under {d}: {res}".format(c=len(res), d=d, res=res))
-            repos.extend(res)
-        alt_repos = []
-        for d in self.alt_repodirs:
+            repoAs.extend(res)
+        repoBs = []
+        for d in self.repoBdirs:
             res = self.find_git_repos(d)
             logger.debug("Found {c} alt-repos under {d}: {res}".format(c=len(res), d=d, res=res))
-            alt_repos.extend(res)
+            repoBs.extend(res)
         # find relevant commit data in each repo
-        repo_data = self.do_repos(repos, author_name, num_days, localtz)
-        alt_repo_data = self.do_repos(alt_repos, author_name, num_days, localtz)
+        repoA_data = self.do_repos(repoAs, author_name, num_days, localtz)
+        repoB_data = self.do_repos(repoBs, author_name, num_days, localtz)
         logger.info("Found {n} commits in {r} repos.".format(n=self.num_commits, r=self.num_repos))
-        self.plot(repo_data, alt_repo_data, author_name, num_days, localtz)
+        self.plot(repoA_data, repoB_data, author_name, num_days, localtz)
 
     def do_repos(self, repolist, author_name, num_days, localtz):
         """
@@ -167,7 +167,7 @@ class GitWorkGraph:
                 repos.append(p)
         return repos
 
-    def make_plot_data(self, repo_data, alt_repo_data):
+    def make_plot_data(self, repoA_data, repoB_data):
         """
         Take the two nested dicts of per-day, per-hour data and convert
         them to a numpy array for plotting.
@@ -175,12 +175,12 @@ class GitWorkGraph:
         First we find the maximum number of commits per hour ever, c_max.
 
         Each array element is a float from -1 to 1, where 1 is c_max commits
-        being done for repo_data repos, and -1 is c_max commits being done
-        for alt_repo_data repos, and 0 is no commits.
+        being done for repoA_data repos, and -1 is c_max commits being done
+        for repoB_data repos, and 0 is no commits.
         """
         # find the most commits per hour
         c_max = 0
-        for t in [repo_data, alt_repo_data]:
+        for t in [repoA_data, repoB_data]:
             for day in t:
                 for hour in t[day]:
                     if t[day][hour] > c_max:
@@ -191,8 +191,8 @@ class GitWorkGraph:
         for hour in range(24):
             d_list = []
             for day in range(7):
-                r = repo_data[day][hour] * 1.0
-                a = alt_repo_data[day][hour] * 1.0
+                r = repoA_data[day][hour] * 1.0
+                a = repoB_data[day][hour] * 1.0
                 r_p = r / c_max
                 a_p = a / c_max
                 t = r_p - a_p
@@ -200,14 +200,14 @@ class GitWorkGraph:
             data.append(d_list)
         return data
 
-    def plot(self, repo_data, alt_repo_data, author_name, num_days, localtz):
+    def plot(self, repoA_data, repoB_data, author_name, num_days, localtz):
         """
         Draw the plot
         see:
         * http://www.bertplot.com/visualization/?p=292
         """
         logger.info("Beginning to plot data")
-        data = self.make_plot_data(repo_data, alt_repo_data)
+        data = self.make_plot_data(repoA_data, repoB_data)
         data = np.array(data)
         rows = [str(x) for x in range(24)]
         columns = self.day_names
@@ -270,13 +270,13 @@ def parse_args(argv):
     p = argparse.ArgumentParser(description='Sample python script skeleton.')
     p.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
                       help='verbose output. specify twice for debug-level output.')
-    p.add_argument('-r', '--repodir', dest='repodirs', action='append',
+    p.add_argument('-a', '--repoAdir', dest='repoAdirs', action='append',
                    help='directory to search for git repositories (non-recursive); '
                    'can be specified multiple times', default=[])
-    p.add_argument('-a', '--alt-repodir', dest='alt_repodirs', action='append',
+    p.add_argument('-b', '--repBodir', dest='repoBdirs', action='append',
                    help='like -r/--repodir, but graph in alternate color', default=[])
-    p.add_argument('--repolabel', action='store', help='repo label/legend', default='repos')
-    p.add_argument('--alt-repolabel', action='store', help='alt repo label/legend', default='alt-repos')
+    p.add_argument('--repoAlabel', action='store', help='repo label/legend', default='repos')
+    p.add_argument('--repoBlabel', action='store', help='alt repo label/legend', default='alt-repos')
     cn = get_git_user_name()
     p.add_argument('--author-name', action='store', type=str, default=cn,
                    help='author name to search for (argument to git log --author=); default: "{cn}"'.format(cn=cn))
@@ -293,9 +293,9 @@ if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     script = GitWorkGraph(
         verbose=args.verbose,
-        repodirs=args.repodirs,
-        alt_repodirs=args.alt_repodirs,
-        label=args.repolabel,
-        alt_label=args.alt_repolabel,
+        repoAdirs=args.repoAdirs,
+        repoBdirs=args.repoBdirs,
+        label=args.repoAlabel,
+        alt_label=args.repoBlabel,
     )
     script.run(args.author_name, args.days, args.timezone)
