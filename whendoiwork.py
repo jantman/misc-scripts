@@ -121,6 +121,7 @@ class GitWorkGraph:
         keep_commits = []
         seen_commits = []
         # we filter by author and date here in the `git log` command
+        cutoff_dt = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC) - datetime.timedelta(days=num_days)
         # dangling commits via reflog
         for sha in repo.git.log(walk_reflogs=True, author=author_name, pretty='%H', since='{n} days ago'.format(n=num_days)).split("\n"):
             if sha in seen_commits:
@@ -138,7 +139,11 @@ class GitWorkGraph:
                 continue
             try:
                 c = repo.commit(sha)
+                if c.author.name != author_name:
+                    continue
                 a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
+                if a_dt < cutoff_dt:
+                    continue
                 keep_commits.append(a_dt)
                 seen_commits.append(sha)
             except Exception as ex:
@@ -152,7 +157,11 @@ class GitWorkGraph:
                 continue
             try:
                 c = repo.commit(parts[-1])
+                if c.author.name != author_name:
+                    continue
                 a_dt = datetime.datetime.fromtimestamp(c.authored_date, pytz.UTC)
+                if a_dt < cutoff_dt:
+                    continue
                 keep_commits.append(a_dt)
                 seen_commits.append(sha)
             except ValueError as ex:
