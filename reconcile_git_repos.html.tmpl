@@ -1,0 +1,49 @@
+<html>
+  <head></head>
+  <body>
+  <h1>git repository reconcile as of {{ date }}</h1>
+  <br /><br />
+  <h2>Empty Repositories:</h2>
+  <ul>
+{% for repo in repos %}
+{% if repos[repo]['is_empty'] %}
+    <li><a href="{{ repos[repo]['html_url'] }}">{{ repos[repo]['name'] }}</a></li>
+{% endif %}
+{% endfor %}
+  </ul>
+  <h2>Repositories with Less Than 10 Commits</h2>
+  <ul>
+{% for repo in repos %}
+{% if not repos[repo]['is_empty'] and 'num_commits' in repos[repo] and repos[repo]['num_commits'] < 10 %}
+    <li><a href="{{ repos[repo]['html_url'] }}">{{ repos[repo]['name'] }}</a> ({{ repos[repo]['num_commits'] }})</li>
+{% endif %}
+{% endfor %}
+  </ul>
+  <h2>Repositories with Newest Commit More than One Year Ago</h2>
+  <ul>
+{% for repo in repo_sorted_timestamp %}
+{% if 'newest_timestamp' in repos[repo] and repos[repo]['newest_timestamp'] < cutoff_ts %}
+    <li><a href="{{ repos[repo]['html_url'] }}">{{ repos[repo]['name'] }}</a> ({{ repos[repo]['newest_timestamp']|ts2str }})</li>
+{% endif %}
+{% endfor %}
+  </ul>
+  <h2>Similar Repositories</h2>
+{% for rdict in similar_repos %}
+  <div style="border-bottom: 1px solid black;">
+    <ul>
+      {% for reponame in rdict['repo_paths'] %}
+      <li><a href="{{ repos[reponame]['html_url'] }}">{{ reponame }}</a> - {{ repos[reponame]|repostats }}</li>
+      {% endfor %}
+    </ul>
+    {% for comparison in rdict['comparisons'] %}
+    <p>{{ comparison['pathA'] }} vs {{ comparison['pathB'] }}</p>
+    <ul>
+    <li>Branches: <span style="color: green;">A +{{ comparison['branchA'] }}</span> / <span style="color: orange;">~{{ comparison['branchDiff'] }}</span> / <span style="color: red;">B +{{ comparison['branchB'] }}</span></li>
+    <li>Tags: <span style="color: green;">A +{{ comparison['tagA'] }}</span> / <span style="color: orange;">~{{ comparison['tagDiff'] }}</span> / <span style="color: red;">B +{{ comparison['tagB'] }}</span></li>
+    <li>Commits ({{ comparison['Abranch'] }} / {{ comparison['Bbranch'] }}): <span style="color: green;">A +{{ comparison['commitA'] }}</span> / <span style="color: red;">B +{{ comparison['commitB'] }}</span></li>
+    <ul>
+    {% endfor %}
+  </div>
+{% endfor %}  
+  </body>
+</html>
