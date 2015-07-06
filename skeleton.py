@@ -17,6 +17,8 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2015-07-06 Jason Antman <jason@jasonantman.com>:
+  - switch to module-level logger
 2014-12-25 Jason Antman <jason@jasonantman.com>:
   - switch to use argparse instead of optparse
   - use class instead of module functions
@@ -33,28 +35,21 @@ import logging
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
+logger = logging.getLogger(__name__)
 
 
 class SimpleScript:
     """ might as well use a class. It'll make things easier later. """
 
-    def __init__(self, logger=None, dry_run=False, verbose=0):
+    def __init__(self, dry_run=False, verbose=0):
         """ init method, run at class creation """
-        # setup a logger; allow an existing one to be passed in to use
-        self.logger = logger
-        if logger is None:
-            self.logger = logging.getLogger(self.__class__.__name__)
-        if verbose > 1:
-            self.logger.setLevel(logging.DEBUG)
-        elif verbose > 0:
-            self.logger.setLevel(logging.INFO)
         self.dry_run = dry_run
 
     def run(self):
         """ do stuff here """
-        self.logger.info("info-level log message")
-        self.logger.debug("debug-level log message")
-        self.logger.error("error-level log message")
+        logger.info("info-level log message")
+        logger.debug("debug-level log message")
+        logger.error("error-level log message")
         print("run.")
 
 
@@ -77,5 +72,9 @@ def parse_args(argv):
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    script = SimpleScript(dry_run=args.dry_run, verbose=args.verbose)
+    if args.verbose > 1:
+        logger.setLevel(logging.DEBUG)
+    elif args.verbose > 0:
+        logger.setLevel(logging.INFO)
+    script = SimpleScript(dry_run=args.dry_run)
     script.run()
