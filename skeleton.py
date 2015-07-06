@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 class SimpleScript:
     """ might as well use a class. It'll make things easier later. """
 
-    def __init__(self, dry_run=False, verbose=0):
+    def __init__(self, dry_run=False):
         """ init method, run at class creation """
         self.dry_run = dry_run
 
@@ -61,10 +61,11 @@ def parse_args(argv):
     see: <https://docs.python.org/2/library/argparse.html>
     """
     p = argparse.ArgumentParser(description='Sample python script skeleton.')
-    p.add_argument('-d', '--dry-run', dest='dry_run', action='store_true', default=False,
-                      help="dry-run - don't actually make any changes")
+    p.add_argument('-d', '--dry-run', dest='dry_run', action='store_true',
+                   default=False,
+                   help="dry-run - don't actually make any changes")
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
-                      help='verbose output. specify twice for debug-level output.')
+                   help='verbose output. specify twice for debug-level output.')
 
     args = p.parse_args(argv)
 
