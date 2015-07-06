@@ -25,3 +25,4 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provision "shell",
                       inline: "chown -R vagrant:vagrant /home/vagrant/.rpmmacros /home/vagrant/rpmbuild"
 end
+# moved to: https://github.com/jantman/rpmbuild-vagrant-boxes
