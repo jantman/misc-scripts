@@ -33,28 +33,29 @@ import os
 from platform import node
 from datetime import datetime
 import sys
-import atexit
+import logging
 
-# TODO: if I change anything else in this script, switch to optparse and logging
-verbose = False
+logging.basicConfig()
+logger = logging.getLogger()
+
+# TODO: if I change anything else in this script, switch to optparse
 if '-v' in sys.argv or '--verbose' in sys.argv:
-    verbose = True
+    logger.setLevel(logging.DEBUG)
 
 lockfile_path = os.path.abspath(os.path.expanduser('~/.savescreen.lock'))
 
 def clear_lockfile():
+    logger.debug("Clearing lockfile {l}".format(l=lockfile_path))
     os.unlink(lockfile_path)
 
-# exit handler to clear lockfile
-atexit.register(clear_lockfile)
-
 def touch(path):
+    logger.debug("Touching lockfile {l}".format(l=lockfile_path))
     with open(path, 'a'):
         os.utime(path, None)
 
 # check for lockfile
 if os.path.exists(lockfile_path):
-    print("ERROR: lockfile already exists at %s; exiting" % lockfile_path)
+    logger.critical("ERROR: lockfile already exists at %s; exiting" % lockfile_path)
     raise SystemExit(1)
 
 touch(lockfile_path)
@@ -62,8 +63,7 @@ touch(lockfile_path)
 # get the window list
 windowstr = subprocess.check_output(['screen', '-Q', 'windows']).decode()
 #windowstr = '0$ root  1$ blog  2$ blog-venv  3$ themes  4$ plugins  5$ writing  6$ temp/rm_me/blog_logs  7-$ bash  8*$ bash'
-if verbose:
-    print("windowstr: ={w}=".format(w=windowstr))
+logger.debug("windowstr: ={w}=".format(w=windowstr))
 
 windows = {}
 
@@ -72,38 +72,35 @@ windowre = re.compile(r'(\s?(\d+)[-\*]?\$\s+(\S+)\s*)')
 max_window = 0
 # loop over the window list, extract substrings matching a window specifier
 while m is not None:
-    if verbose:
-        print("LOOP windowstr={w}=".format(w=windowstr))
+    logger.debug("LOOP windowstr={w}=".format(w=windowstr))
     m = windowre.match(windowstr)
     if m is None:
         if len(windows) == 0:
-            if verbose:
-                print("no match and no windows yet; trimming windowstr and continuing")
+            logger.debug("no match and no windows yet; trimming windowstr and continuing")
             windowstr = windowstr[1:]
             m = True
             continue
         else:
-            if verbose:
-                print("no match, breaking out of loop - windowstr: {w}".format(w=windowstr))
+            logger.debug("no match, breaking out of loop - windowstr: {w}".format(w=windowstr))
             break
     g = m.groups()
     windowstr = windowstr[len(g[0]):]
-    if verbose:
-        print("found match: {a} = {b}".format(a=g[1], b=g[2]))
+    logger.debug("found match: {a} = {b}".format(a=g[1], b=g[2]))
     windows[int(g[1])] = g[2]
     if int(g[1]) > max_window:
         max_window = int(g[1])
 
-if verbose:
-    print(windows)
+logger.debug(windows)
 
 # read in screenrc
+logger.debug("Reading .screenrc")
 with open(os.path.join(os.path.expanduser('~'), '.screenrc'), 'r') as fh:
     screenrc = fh.read()
 
 # get rid of the first "local 0" line if it's there
 screenrc = screenrc.replace("screen -t local 0\n", "")
 
+logger.debug("Writing .screenrc.save")
 # write it out to the save location, with the windows added
 dirpath = os.path.join(os.path.expanduser('~'), '.screendirs')
 with open(os.path.join(os.path.expanduser('~'), '.screenrc.save'), 'w') as fh:
@@ -117,3 +114,4 @@ with open(os.path.join(os.path.expanduser('~'), '.screenrc.save'), 'w') as fh:
             fh.write("screen -t \"{name}\" {num} sh -c \"cd $(readlink -fn {dirpath}/{num}); bash\"\n".format(name='bash', num=n, dirpath=dirpath))
     fh.write("\n")
 # done
+clear_lockfile()
