@@ -15,18 +15,24 @@
 # in a GITHUB_TOKEN environment variable.
 #
 # CHANGELOG:
+#
+# * 2015-07-07 Jason Antman <jason@jasonantman.com>
+# - use argparse, add csv output option
+#
+# * 2014-02-14 Jason Antman <jason@jasonantman.com>
 # - initial script
 #
 
 from github import Github
 import os
 import sys
+import argparse
 
-if len(sys.argv) < 2:
-    sys.stderr.write("USAGE: github_org_repos.py <orgname>")
-    sys.exit(1)
-
-orgname = sys.argv[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('--csv', dest='csv', action='store_true', default=False,
+                    help='output as CSV')
+parser.add_argument('orgname', type=str, help='github org name')
+args = parser.parse_args()
 
 TOKEN = None
 try:
@@ -46,8 +52,23 @@ if TOKEN is None:
 
 g = Github(login_or_token=TOKEN)
 
-for repo in g.get_organization(orgname).get_repos():
-    f = " fork of %s/%s" % (repo.parent.owner.name, repo.parent.name) if repo.fork else ''
-    p = 'private' if repo.private else 'public'
-    fc = "; %d forks" % (repo.forks_count) if (repo.forks_count > 0) else ''
-    print("%s (%s%s%s) %s" % (repo.name, p, f, fc, repo.html_url))
+if args.csv:
+    print("repo_name,private_or_public,fork_of,forks,url")
+
+for repo in g.get_organization(args.orgname).get_repos():
+    p = 'private'if repo.private else 'public'
+    fork_of = ''
+    if repo.fork:
+        fork_of = '%s/%s' % (repo.parent.owner.name, repo.parent.name)
+    if args.csv:
+        print("{name},{p},{fork_of},{forks},{url}".format(
+            name=repo.name,
+            p=p,
+            fork_of=fork_of,
+            forks=repo.forks_count,
+            url=repo.html_url
+        ))
+    else:
+        f = " fork of %s" % fork_of if repo.fork else ''
+        fc = "; %d forks" % (repo.forks_count) if (repo.forks_count > 0) else ''
+        print("%s (%s%s%s) %s" % (repo.name, p, f, fc, repo.html_url))
