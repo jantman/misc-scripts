@@ -174,7 +174,8 @@ def parse_args(argv):
     this uses the new argparse module instead of optparse
     see: <https://docs.python.org/2/library/argparse.html>
     """
-    p = argparse.ArgumentParser(description='Sample python script skeleton.')
+    p = argparse.ArgumentParser(description='Script to sync your '
+                                '~/.ssh/authorized_keys to a GitLab instance.')
     p.add_argument('-d', '--dry-run', dest='dry_run', action='store_true',
                    default=False,
                    help="dry-run - don't actually make any changes")
