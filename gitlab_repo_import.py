@@ -33,6 +33,11 @@ Free for any use provided that patches are submitted back to me.
 Changelog
 ----------
 
+2015-07-21 Jason Antman <jason@jasonantman.com>:
+  - add remove_on_fail option to remove destination directory if copy fails
+  - add ignore_broken_links option to ignore broken symlinks when copying repo
+  - wrap repo copy operation in try/except
+
 2015-07-16 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -73,14 +78,26 @@ VISIBILITY_LEVELS = {
     'public': 20,
 }
 
+def ignore_broken_links_callback(dirname, items):
+    skip = []
+    for item in items:
+        path = os.path.join(dirname, item)
+        if not os.path.exists(path):
+            logger.warning("Skipping broken link: %s", path)
+            skip.append(item)
+    return skip
+
 
 class GitLabRepoImport:
     """Helper to import an existing bare git repo into GitLab."""
 
     git_user = 'git'
 
-    def __init__(self, url, apikey, gitlab_ctl_path, repos_dir=None):
+    def __init__(self, url, apikey, gitlab_ctl_path, repos_dir=None,
+                 remove_on_fail=False, ignore_broken_links=False):
         """connect to GitLab"""
+        self.remove_on_fail = remove_on_fail
+        self.ignore_broken_links = ignore_broken_links
         logger.debug("Connecting to GitLab")
         self.conn = gitlab.Gitlab(url, apikey)
         self.conn.auth()
@@ -135,30 +152,40 @@ class GitLabRepoImport:
             logger.error("Error: path already exists: %s", dest_path)
             return False
         logger.info("Copying %s to %s", repo_path, dest_path)
-        shutil.copytree(repo_path, dest_path)
-        logger.debug("Done copying")
-        tmp = pwd.getpwnam(self.git_user)
-        git_uid = tmp.pw_uid
-        git_gid = tmp.pw_gid
-        logger.info("Recursively setting ownership on %s to %d:%d",
-                    dest_path, git_uid, git_gid)
-        # from http://stackoverflow.com/a/2853934/211734
-        os.chown(dest_path, git_uid, git_gid)
-        for root, dirs, files in os.walk(dest_path):
-            for momo in dirs:
-                os.chown(os.path.join(root, momo), git_uid, git_gid)
-            for momo in files:
-                os.chown(os.path.join(root, momo), git_uid, git_gid)
-        logger.debug("Done chown'ing")
-        if migrate_hooks:
-            hook_dir = os.path.join(dest_path, 'hooks')
-            new_dir = os.path.join(dest_path, 'custom_hooks')
-            if os.path.exists(hook_dir):
-                logger.info("Migrating hooks - moving %s to %s",
-                            hook_dir,
-                            new_dir)
-                shutil.move(hook_dir, new_dir)
-                logger.debug("Done migrating hooks")
+        try:
+            ignore_cb = None
+            if self.ignore_broken_links:
+                ignore_cb = ignore_broken_links_callback
+            shutil.copytree(repo_path, dest_path, ignore=ignore_cb)
+            logger.debug("Done copying")
+            tmp = pwd.getpwnam(self.git_user)
+            git_uid = tmp.pw_uid
+            git_gid = tmp.pw_gid
+            logger.info("Recursively setting ownership on %s to %d:%d",
+                        dest_path, git_uid, git_gid)
+            # from http://stackoverflow.com/a/2853934/211734
+            os.chown(dest_path, git_uid, git_gid)
+            for root, dirs, files in os.walk(dest_path):
+                for momo in dirs:
+                    os.chown(os.path.join(root, momo), git_uid, git_gid)
+                for momo in files:
+                    os.chown(os.path.join(root, momo), git_uid, git_gid)
+            logger.debug("Done chown'ing")
+            if migrate_hooks:
+                hook_dir = os.path.join(dest_path, 'hooks')
+                new_dir = os.path.join(dest_path, 'custom_hooks')
+                if os.path.exists(hook_dir):
+                    logger.info("Migrating hooks - moving %s to %s",
+                                hook_dir,
+                                new_dir)
+                    shutil.move(hook_dir, new_dir)
+                    logger.debug("Done migrating hooks")
+        except Exception as ex:
+            logger.exception("Exception when copying repo")
+            if self.remove_on_fail and os.path.exists(dest_path):
+                logger.warning("Removing %s", dest_path)
+                shutil.rmtree(dest_path)
+            return
         if not self.import_repo():
             return False
         proj = self.get_gitlab_project(group_name, project_name)
@@ -296,6 +323,13 @@ def parse_args(argv):
                    dest='migrate_hooks', default=True,
                    help="if specified, do not automatically rename the source "
                    "repo's 'hooks' directory to 'custom_hooks' before import")
+    p.add_argument('--remove-on-fail', action='store_true', default=False,
+                   dest='remove_on_fail',
+                   help="remove destination directory if copy or import fails")
+    p.add_argument('--ignore-broken-links', action='store_true', default=False,
+                   dest='ignore_broken_links',
+                   help='ignore any broken links in source repo when copying to'
+                   ' GitLab destination')
 
     # project settings
     p.add_argument('--visibility', action='store', dest='visibility',
@@ -349,5 +383,7 @@ if __name__ == "__main__":
         get_api_key(),
         args.gitlab_ctl,
         repos_dir=args.repos_dir,
+        remove_on_fail=args.remove_on_fail,
+        ignore_broken_links=args.ignore_broken_links,
     )
     syncer.run(args.group, args.repo_path, args.settings, args.migrate_hooks)
