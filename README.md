@@ -80,6 +80,7 @@ file.
 * __twitter_find_followed_not_in_list.py__ - Simple script to list anyone whom you're following but isn't in one of your lists.
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
 * __VipToInternalHosts.pl__ - script to take F5 BigIp VIP address and display the members of the pool it is served by
+* __watch_all_my_github_repos.py__ - Python script to ensure you're watching all of your own GitHub repos.
 * __watch_cloudformation.py__ - Python script to watch a CloudFormation stack's events, and exit when the CF stack update or create finishes. Optional notification via PushOver.
 * __watch_elasticsearch.py__ - Python script to watch an ElasticSearch cluster's status and exit/notify when the status changes. Optional notifivation via PushOver.
 * __watch_jenkins.py__ - Python script using python-jenkins (https://pypi.python.org/pypi/python-jenkins) to watch a job (specified by URL), and exit 0 on success or 1 on failure. Optional notification via PushOver.
