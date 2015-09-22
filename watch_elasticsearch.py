@@ -61,6 +61,7 @@ def main(host, port, sleeptime=10, pushover=False):
         raise SystemExit(1)
 
     status = cluster_status(es)
+    start_dt = datetime.datetime.now()
     while True:
         try:
             s = cluster_status(es)
@@ -71,12 +72,13 @@ def main(host, port, sleeptime=10, pushover=False):
             continue
         logger.debug("Got cluster status: status={s} timed_out={t} "
                      "initializing_shards={i} relocating_shards={r}"
-                     " unassigned_shards={u}".format(
+                     " unassigned_shards={u} ({dt})".format(
                          s=s['status'],
                          t=s['timed_out'],
                          i=s['initializing_shards'],
                          r=s['relocating_shards'],
-                         u=s['unassigned_shards']))
+                         u=s['unassigned_shards'],
+                         dt=(datetime.datetime.now() - start_dt)))
         if s['timed_out'] != status['timed_out']:
             change = "Cluster timed_out changed from {o} to {n}".format(
                 o=status['timed_out'],
@@ -92,12 +94,13 @@ def main(host, port, sleeptime=10, pushover=False):
         status = s
         time.sleep(sleeptime)
 
-    msg = '{h}:{p} {c} (shards: {i} initializing, {r} relocating, {u} unassigned)'.format(h=host,
-                                                                                          p=port,
-                                                                                          c=change,
-                                                                                          i=s['initializing_shards'],
-                                                                                          r=s['relocating_shards'],
-                                                                                          u=s['unassigned_shards'])
+    msg = '{h}:{p} {c} (shards: {i} initializing, {r} relocating, {u} unassigned) ({dt})'.format(h=host,
+                                                                                                 p=port,
+                                                                                                 c=change,
+                                                                                                 i=s['initializing_shards'],
+                                                                                                 r=s['relocating_shards'],
+                                                                                                 u=s['unassigned_shards'],
+                                                                                                 dt=(datetime.datetime.now() - start_dt))
     if s['status'] == 'green' and not s['timed_out']:
         # I got better!
         logger.info(msg)
@@ -129,7 +132,7 @@ def notify_pushover(is_success, msg):
         req = Client().send_message(msg, priority=0)
     else:
         req = Client().send_message(msg, priority=0, sound='falling')
-    
+
 def parse_args(argv):
     """ parse arguments/options """
     p = optparse.OptionParser(usage="usage: %prog [options] stack_name")
