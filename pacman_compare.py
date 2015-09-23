@@ -12,6 +12,8 @@ Copyright 2015 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2015-09-23 Jason Antman <jason@jasonantman.com>:
+  - add option to include package description in output
 2015-09-22 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -19,10 +21,14 @@ CHANGELOG:
 import sys
 import os
 import argparse
+import subprocess
+import re
 
 
 class PacmanCompare:
     """compare packages in two ``pacman -Q`` outputs, ignoring versions"""
+
+    desc_re = re.compile(r'^Description\s*: (.+)$')
 
     def read_packages(self, fpath):
         packages = []
@@ -33,7 +39,20 @@ class PacmanCompare:
                 packages.append(line.split(' ')[0])
         return sorted(packages)
 
-    def run(self, fileA, fileB):
+    def get_package_desc(self, pkgname):
+        """get the package description string"""
+        try:
+            p = subprocess.check_output(['pacman', '-Qi', pkgname])
+        except subprocess.CalledProcessError:
+            return '<not in local pacman database>'
+        for line in p.split('\n'):
+            m = self.desc_re.match(line)
+            if m is None:
+                continue
+            return m.group(1)
+        return '<unknown - could not parse pacman output>'
+
+    def run(self, fileA, fileB, description=False):
         """ do stuff here """
         if not os.path.exists(fileA):
             raise SystemExit("ERROR: FILEA_PATH %s does not exist" % fileA)
@@ -68,7 +87,10 @@ class PacmanCompare:
             )
             if len(info[idx]['only']) > 0:
                 for x in info[idx]['only']:
-                    print(x)
+                    if not description:
+                        print(x)
+                    else:
+                        print("%s : %s" % (x, self.get_package_desc(x)))
                 print("")
 
 def parse_args(argv):
@@ -79,6 +101,9 @@ def parse_args(argv):
     see: <https://docs.python.org/2/library/argparse.html>
     """
     p = argparse.ArgumentParser(description='Sample python script skeleton.')
+    p.add_argument('-D', '--description', dest='description', action='store_true',
+                   default=False,
+                   help='include package description in output')
     p.add_argument('FILEA_PATH', type=str)
     p.add_argument('FILEB_PATH', type=str)
     args = p.parse_args(argv)
@@ -87,4 +112,4 @@ def parse_args(argv):
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     script = PacmanCompare()
-    script.run(args.FILEA_PATH, args.FILEB_PATH)
+    script.run(args.FILEA_PATH, args.FILEB_PATH, description=args.description)
