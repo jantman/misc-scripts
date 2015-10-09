@@ -36,6 +36,7 @@ file.
 * __htmldata.py__ - Perl library to manipulate HTML or XHTML documents, required by mw2html-auth
 * __increment_zone_serial__ - This script updates/increments the bind zone file serial number in a file specified as the first argument
 * __ismerged__ - shell script that takes a git branch name, and tells if it is merged into master or not
+* __jenkins_node_labels.py__ - Python script to list all Jenkins slaves/executors and their labels.
 * __jira2trello.py__ - Python script to update a Trello board with some details from Jira.
 * __js2phpdoc.php__ - script to take comments and function prototypes from JS files and make them PHP-ish to be parsed by phpdoc
 * __kickRsyslog.php__ - script to restart rsyslog if it appears to have stopped logging
