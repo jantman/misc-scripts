@@ -12,6 +12,9 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2015-10-08 Jason Antman <jason@jasonantman.com>:
+  - clarify some things in help output
+
 2015-02-12 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -129,19 +132,19 @@ def parse_args(argv):
     see: <https://docs.python.org/2/library/argparse.html>
     """
     pwd = os.getcwd()
-    epil = "Query Types:\n"
+    epil = "Search Types:\n"
     for i in dir(QuickCloudtrail):
         if i.startswith('search_'):
             epil += "  {i} - {d}\n".format(i=i[7:],
                                            d=getattr(QuickCloudtrail, i).__doc__)
-    p = argparse.ArgumentParser(description='Simple AWS CloudTrail JSON log searcher.',
+    p = argparse.ArgumentParser(description='Simple AWS CloudTrail JSON log searcher (searches *.json).',
                                 epilog=epil,
                                 formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
                    help='verbose output. specify twice for debug-level output.')
     p.add_argument('-d', '--logdir', dest='logdir', action='store', type=str,
                    default=pwd,
-                   help='directory containing JSON logs (default ./)')
+                   help='directory containing .json logs (default ./)')
     p.add_argument('-e', '--errors-only', dest='error_only', action='store_true',
                    default=False,
                    help='return only records with an errorCode or errorMessage')
