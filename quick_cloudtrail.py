@@ -98,6 +98,14 @@ class QuickCloudtrail:
                     break
         return res
 
+    def search_errors(self, arg):
+        """find all logs with errorCode or errorMessage; ignore query"""
+        res = []
+        for i in self.logs:
+            if 'errorCode' in i or 'errorMessage' in i:
+                res.append(i)
+        return res
+
     def format_log(self, rec):
         """format a log record as a human-readable string"""
         s = pformat(rec)
