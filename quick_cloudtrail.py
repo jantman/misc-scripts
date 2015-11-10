@@ -14,6 +14,7 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG:
 2015-11-10 Jason Antman <jason@jasonantman.com>:
   - add search type for all errors
+  - add search types for errorCode and errorMessage
 
 2015-10-08 Jason Antman <jason@jasonantman.com>:
   - clarify some things in help output
@@ -101,12 +102,36 @@ class QuickCloudtrail:
                     break
         return res
 
-    def search_errors(self, arg):
+    def search_errors(self, args):
         """find all logs with errorCode or errorMessage; ignore query"""
         res = []
         for i in self.logs:
             if 'errorCode' in i or 'errorMessage' in i:
                 res.append(i)
+        return res
+
+    def search_errorCode(self, args):
+        """find all logs with an errorCode containing the specified string"""
+        res = []
+        for i in self.logs:
+            if 'errorCode' not in i:
+                continue
+            for a in args:
+                if a in i['errorCode']:
+                    res.append(i)
+                    break
+        return res
+
+    def search_errorMessage(self, args):
+        """find all logs with an errorMessage containing the specified string"""
+        res = []
+        for i in self.logs:
+            if 'errorMessage' not in i:
+                continue
+            for a in args:
+                if a in i['errorMessage']:
+                    res.append(i)
+                    break
         return res
 
     def format_log(self, rec):
