@@ -12,6 +12,9 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2015-11-10 Jason Antman <jason@jasonantman.com>:
+  - add search type for all errors
+
 2015-10-08 Jason Antman <jason@jasonantman.com>:
   - clarify some things in help output
 
