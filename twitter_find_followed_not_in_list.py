@@ -17,17 +17,18 @@ import sys
 import optparse
 import logging
 import os
+import time
 
 try:
     import twitter
 except ImportError:
     raise SystemExit("ERROR: could not import twitter. Please `pip install python-twitter` and run script again.")
 
+from twitter.error import TwitterError
+
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 logger = logging.getLogger(__name__)
-
-API_KEY = ' t7ma2zpTkqNTlxiD8D3iqta3p'
 
 
 class FindFollowedNotInList:
@@ -68,18 +69,43 @@ class FindFollowedNotInList:
         except:
             raise SystemExit("Invalid credentials / auth failed")
             # might need to pass owner_id or something
-            list_members = []
-            lists = self.api.GetLists(user_id=self.my_user_id)
-            for l in lists:
-                print("{id} {name}".format(id=l.id, name=l.name))
-                m = self.api.GetListMembers(l.id, l.slug)
-                for member in m:
-                    list_members.append(m.id)
-        followed = self.api.GetFriends()
+        list_members = []
+        lists = invoke_with_throttling_retries(self.api.GetLists, user_id=self.my_user_id)
+        for l in lists:
+            print("{id} {name}".format(id=l.id, name=l.name))
+            m = invoke_with_throttling_retries(self.api.GetListMembers, l.id, l.slug)
+            for member in m:
+                list_members.append(member.id)
+        followed = invoke_with_throttling_retries(self.api.GetFriends)
         for u in followed:
             if u.id not in list_members:
-                print("user {sn} not in any lists (id={id} name={name})".format(id=u.id, name=u.name, sn=u.screen_name))
+                print("user {sn} not in any lists (id={id} name={name})".format(
+                    id=u.id,
+                    name=u.name.encode('utf-8'),
+                    sn=u.screen_name.encode('utf-8'))
+                )
         return True
+
+def invoke_with_throttling_retries(function_ref, *argv, **kwargs):
+    MAX_RETRIES = 6
+    SLEEP_BASE_SECONDS = 5
+
+    retries = 0
+    while True:
+        try:
+            retval = function_ref(*argv, **kwargs)
+            return retval
+        except TwitterError as e:
+            if e[0]['message'] != 'Rate limit exceeded':
+                raise e
+            if retries == MAX_RETRIES:
+                logger.error("Reached maximum number of retries; raising error")
+                raise e
+        stime = SLEEP_BASE_SECONDS * (2**retries)
+        logger.info("Call of %s got throttled; sleeping %s seconds before "
+                    "retrying", function_ref, stime)
+        time.sleep(stime)
+        retries += 1
 
 def parse_args(argv):
     """ parse arguments/options """
