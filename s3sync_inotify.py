@@ -109,9 +109,9 @@ class S3IndexSync:
         """
         logger.info("Doing multipart upload of %s to %s", fpath, key_path)
         start = datetime.datetime.now()
-        mp = b.initiate_multipart_upload(key_path)
+        mp = self.bucket.initiate_multipart_upload(key_path)
         chunk_size = 15728640
-        chunk_count = int(math.ceil(source_size / float(chunk_size)))
+        chunk_count = int(math.ceil(fsize / float(chunk_size)))
         logger.debug("Will upload %sb file as %s chunks, %sb each",
                      fsize, chunk_count, chunk_size)
 
@@ -121,9 +121,10 @@ class S3IndexSync:
         for i in range(chunk_count):
             logger.debug("Uploading chunk %s", i)
             offset = chunk_size * i
-            bytes = min(chunk_size, source_size - offset)
-            with FileChunkIO(fpath, 'r', offset=offset, bytes=bytes) as fp:
+            f_bytes = min(chunk_size, fsize - offset)
+            with FileChunkIO(fpath, 'r', offset=offset, bytes=f_bytes) as fp:
                 mp.upload_part_from_file(fp, part_num=i + 1)
+            logger.debug("Uploaded %s bytes", offset)
         # Finish the upload
         logger.debug("Done uploading chunks")
         mp.complete_upload()
