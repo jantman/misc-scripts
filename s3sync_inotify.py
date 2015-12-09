@@ -69,18 +69,14 @@ class S3IndexSync:
         self.notifier.process_events()
         logger.info("Starting inotify loop")
         while True:
-            changed = False
             try:
                 if self.notifier.check_events():
                     self.notifier.read_events()
                     self.notifier.process_events()
-                    changed = True
             except KeyboardInterrupt as ex:
                 raise ex
             except:
                 logger.exception("exception encountered while polling inotify")
-            if changed:
-                self.make_index_html()
 
     def handle_inotify(self, event):
         """handle the inotify event"""
@@ -105,6 +101,8 @@ class S3IndexSync:
         k.key = key_path
         k.set_contents_from_filename(fpath)
         logger.info("Upload complete in %s", (datetime.datetime.now() - start))
+        if key_path not in self.uploaded:
+            self.make_index_html()
         self.uploaded.append(key_path)
 
     def upload_large_file(self, fpath, key_path, fsize):
