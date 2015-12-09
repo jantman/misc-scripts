@@ -27,9 +27,10 @@ WATCH_TIMEOUT = 1000 # milliseconds
 class S3IndexSync:
     """Sync a directory to S3, generating index.html for it"""
 
-    def run(self, bucket_name, path, prefix=''):
+    def run(self, bucket_name, path, prefix='', always_upload=[]):
         """run the sync"""
         self.prefix = prefix
+        self.always_upload = always_upload
         logger.debug("connecting to S3")
         self.conn = S3Connection()
         logger.info("Connected to S3")
@@ -84,7 +85,7 @@ class S3IndexSync:
             logger.debug("Skipping directory event")
         logger.info("Got event for %s", event.pathname)
         k = os.path.join(self.prefix, os.path.basename(event.pathname))
-        if k in self.uploaded:
+        if k in self.uploaded and k not in self.always_upload:
             logger.debug("Ignoring notify on uploaded file %s", event.pathname)
             return
         self.upload_file(event.pathname, k)
@@ -185,6 +186,9 @@ def parse_args(argv):
                    ' directly in the specified path', default=False)
     p.add_argument('BUCKET_NAME', action='store', type=str,
                    help='s3 bucket name')
+    p.add_argument('--always-upload', dest='always_upload', action='append',
+                   help='filename to always upload (can be specified multiple '
+                   'times)')
     p.add_argument('PATH', action='store', type=str, help='path to sync')
     args = p.parse_args(argv)
 
@@ -199,4 +203,7 @@ if __name__ == "__main__":
     if args.recursive:
         raise NotImplementedError("recursive upload not implemented")
     cls = S3IndexSync()
-    cls.run(args.BUCKET_NAME, args.PATH, prefix=args.prefix)
+    if args.always_upload is None:
+        args.always_upload = []
+    cls.run(args.BUCKET_NAME, args.PATH, prefix=args.prefix,
+            always_upload=args.always_upload)
