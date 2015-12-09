@@ -100,7 +100,7 @@ class S3IndexSync:
         logger.info("Upload complete in %s", (datetime.datetime.now() - start))
         if key_path not in self.uploaded:
             self.make_index_html()
-        self.uploaded.append(key_path)
+        self.uploaded.add(key_path)
 
     def upload_large_file(self, fpath, key_path, fsize):
         """
@@ -128,7 +128,7 @@ class S3IndexSync:
         logger.debug("Done uploading chunks")
         mp.complete_upload()
         logger.info("Upload complete in %s", (datetime.datetime.now() - start))
-        self.uploaded.append(key_path)
+        self.uploaded.add(key_path)
 
     def upload_index(self, content):
         """upload the index.html"""
@@ -154,13 +154,13 @@ class S3IndexSync:
 
     def get_current_keys(self):
         """return a list of the current keys (strings) in the bucket"""
-        keys = []
+        keys = set()
         if self.prefix != '':
             l = self.bucket.list(prefix=self.prefix)
         else:
             l = self.bucket.list()
         for k in l:
-            keys.append(k.name)
+            keys.add(k.name)
         return keys
 
 
