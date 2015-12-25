@@ -54,7 +54,7 @@ class S3IndexSync:
             fpath = os.path.join(path, fname)
             if not os.path.isfile(fpath):
                 continue
-            self.upload_file(fpath, k)
+            self.upload_file(fpath, k, make_index=False)
         self.make_index_html()
 
     def sync_loop(self, path):
@@ -86,7 +86,7 @@ class S3IndexSync:
         k = os.path.join(self.prefix, os.path.basename(event.pathname))
         self.upload_file(event.pathname, k)
 
-    def upload_file(self, fpath, key_path):
+    def upload_file(self, fpath, key_path, make_index=True):
         """upload file at fpath to bucket at key_path"""
         fsize = os.stat(fpath).st_size
         if fsize >= 15728640:  # 15 MB
@@ -98,7 +98,7 @@ class S3IndexSync:
         k.key = key_path
         k.set_contents_from_filename(fpath)
         logger.info("Upload complete in %s", (datetime.datetime.now() - start))
-        if key_path not in self.uploaded:
+        if key_path not in self.uploaded and make_index is True:
             self.make_index_html()
         self.uploaded.add(key_path)
 
