@@ -47,7 +47,7 @@ class S3IndexSync:
         """synchronize all existing files"""
         sync_files = []
         logger.info("Beginning initial file sync")
-        for fname in os.listdir(path):
+        for fname in sorted(os.listdir(path), reverse=True):
             k = os.path.join(self.prefix, fname)
             if k in self.uploaded:
                 continue
