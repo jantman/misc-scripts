@@ -158,7 +158,8 @@ class S3IndexSync:
         """return a list of the current keys (strings) in the bucket"""
         keys = set()
         if self.prefix != '':
-            l = self.bucket.list(prefix=self.prefix)
+            prefix = self.prefix + '/'
+            l = self.bucket.list(prefix=prefix)
         else:
             l = self.bucket.list()
         for k in l:
