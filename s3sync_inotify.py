@@ -55,6 +55,7 @@ class S3IndexSync:
             if not os.path.isfile(fpath):
                 continue
             self.upload_file(fpath, k, make_index=False)
+        logger.info("Done with initial upload; generating index.html")
         self.make_index_html()
 
     def sync_loop(self, path):
