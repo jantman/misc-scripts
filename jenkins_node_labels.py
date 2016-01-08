@@ -54,7 +54,7 @@ FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 logger = logging.getLogger(__name__)
 
-def main(jenkins_url, user=None, password=None):
+def main(jenkins_url, user=None, password=None, csv=False):
     """
     NOTE: this is using unauthenticated / anonymous access.
     If that doesn't work for you, change this to something like:
@@ -85,7 +85,12 @@ def main(jenkins_url, user=None, password=None):
         labels['<master>'] = tmp
     else:
         labels['<master>'] = '<unknown>'
-    print(dict2cols(labels))
+    if not csv:
+        print(dict2cols(labels))
+        return
+    # csv
+    for sname, lbls in labels.items():
+        print('%s,%s' % (sname, ','.join(lbls)))
 
 def dict2cols(d, spaces=2, separator=' '):
     """
@@ -126,6 +131,8 @@ def parse_args(argv):
                    default=None, help='Jenkins password (optional; if -u/--user'
                    'is specified and this is not, you will be interactively '
                    'prompted')
+    p.add_argument('-c', '--csv', dest='csv', action='store_true', default=False,
+                   help='output in CSV')
     p.add_argument('JENKINS_URL', action='store', type=str,
                    help='Base URL to access Jenkins instance')
     args = p.parse_args(argv)
@@ -142,4 +149,4 @@ if __name__ == "__main__":
     else:
         logger.setLevel(logging.INFO)
 
-    main(args.JENKINS_URL, user=args.user, password=args.password)
+    main(args.JENKINS_URL, user=args.user, password=args.password, csv=args.csv)
