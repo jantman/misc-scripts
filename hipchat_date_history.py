@@ -135,9 +135,9 @@ class HypchatHistory:
         if isinstance(msg['from'], dict):
             from_s = '@' + msg['from']['mention_name']
         else:
-            from_s = str(msg['from'])
+            from_s = msg['from'].encode('utf-8')
         date_s = msg['date'].strftime('%H:%M:%S')
-        return "%s %s: %s" % (date_s, from_s, msg['message'])
+        return "%s %s: %s" % (date_s, from_s, msg['message'].encode('utf-8'))
 
     def run(self, room_name, hx_date, tz_name='UTC', json_out=False):
         """ do stuff here """
