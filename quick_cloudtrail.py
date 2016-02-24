@@ -110,26 +110,41 @@ class QuickCloudtrail:
                 res.append(i)
         return res
 
-    def search_errorCode(self, args):
-        """find all logs with an errorCode containing the specified string"""
+    def _search_element_substr(self, key, args):
+        """meta-func to search for any records with substrings in a key"""
         res = []
         for i in self.logs:
-            if 'errorCode' not in i:
+            if key not in i:
                 continue
             for a in args:
-                if a in i['errorCode']:
+                if a in i[key]:
                     res.append(i)
                     break
         return res
 
+    def search_errorCode(self, args):
+        """find all logs with an errorCode containing the specified string"""
+        return self._search_element_substr('errorCode', args)
+
     def search_errorMessage(self, args):
         """find all logs with an errorMessage containing the specified string"""
+        return self._search_element_substr('errorMessage', args)
+
+    def search_eventSource(self, args):
+        """find all logs with an eventSource containing the specified string"""
+        return self._search_element_substr('eventSource', args)
+
+    def search_eventName(self, args):
+        """find all logs with an eventName containing the specified string"""
+        return self._search_element_substr('eventName', args)
+
+    def search_string(self, args):
+        """find all logs with the specified string ANYWHERE in them"""
         res = []
         for i in self.logs:
-            if 'errorMessage' not in i:
-                continue
+            _repr = str(i)
             for a in args:
-                if a in i['errorMessage']:
+                if a in _repr:
                     res.append(i)
                     break
         return res
