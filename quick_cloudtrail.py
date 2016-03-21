@@ -12,6 +12,9 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2016-03-21 Jason Antman <jason@jasonantman.com>:
+  - add option to output results as a JSON list
+
 2015-11-10 Jason Antman <jason@jasonantman.com>:
   - add search type for all errors
   - add search types for errorCode and errorMessage
@@ -199,6 +202,9 @@ def parse_args(argv):
     p.add_argument('-e', '--errors-only', dest='error_only', action='store_true',
                    default=False,
                    help='return only records with an errorCode or errorMessage')
+    p.add_argument('-j', '--json', dest='json', action='store_true',
+                   default=False, help='instead of pretty-printing output, print'
+                   ' output as JSON')
     p.add_argument('search_type', metavar='SEARCH_TYPE', type=str,
                    help='type of search to perform')
     p.add_argument('query', metavar='QUERY', type=str, nargs='+',
@@ -220,6 +226,10 @@ if __name__ == "__main__":
     qt = QuickCloudtrail(args.logdir, verbose=args.verbose)
     res = qt.search(args.search_type, args.query, error_only=args.error_only)
     if len(res) < 1:
+        sys.stderr.write("0 matches found.")
+        raise SystemExit(0)
+    if args.json:
+        print(json.dumps(res))
         raise SystemExit(0)
     for r in res:
         print(qt.format_log(r))
