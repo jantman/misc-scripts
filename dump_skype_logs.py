@@ -35,8 +35,6 @@ from datetime import timedelta
 import re
 from BeautifulSoup import BeautifulSoup
 
-options, remainder = getopt.getopt(sys.argv[1:], 'f:o:v', ['file=', 'outdir=', 'verbose', ])
-
 # CONFIG
 OUTDIR = "skypeout/"
 FILE = "main.db"
@@ -48,14 +46,6 @@ HIGHLIGHT_COLOR = "#FFFF00"
 
 if not os.path.exists(OUTDIR):
     os.makedirs(OUTDIR)
-
-for opt, arg in options:
-    if opt in ('-o', '--outdir'):
-        OUTDIR = arg
-    elif opt in ('-v', '--verbose'):
-        verbose = True
-    elif opt in ('-f', '--file'):
-        FILE = arg
 
 # TODO: test that FILE exists
 
@@ -101,15 +91,15 @@ def format_video(a):
     return s
 
 def format_call_start_end(msg_type, body):
-	xml = BeautifulSoup(body)
-	if msg_type == 30:
-		s = "<strong>Start call</strong>, participants: "
-	else:
-		s = "<strong>End call</strong>, participants: "
-	for x in xml.partlist.findAll("part"):
-		if x.duration is not None and x["identity"] is not None:
-			s += "%s (%s) " % (x["identity"], timedelta(seconds=int(x.duration.string)))
-	return s
+    xml = BeautifulSoup(body)
+    if msg_type == 30:
+        s = "<strong>Start call</strong>, participants: "
+    else:
+        s = "<strong>End call</strong>, participants: "
+        for x in xml.partlist.findAll("part"):
+            if x.duration is not None and x["identity"] is not None:
+                s += "%s (%s) " % (x["identity"], timedelta(seconds=int(x.duration.string)))
+    return s
 
 def highlight_message(msg):
     global HIGHLIGHT_WORDS, HIGHLIGHT_COLOR
@@ -227,7 +217,7 @@ cursor = conn.cursor()
 c2 = conn.cursor()
 c1 = conn.cursor()
 
-c1.execute("SELECT id,identity,type,displayname FROM Conversations")
+c1.execute("SELECT id,identity,type,displayname FROM conversations")
 c1rows = c1.fetchall()
 
 FILES = []
@@ -255,6 +245,7 @@ for c1row in c1rows:
         while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
+        print(foo)
 
     # add calls to EVENTS dict
     cursor.execute("SELECT id, begin_timestamp, host_identity, duration, name, is_incoming, conv_dbid, current_video_audience FROM calls WHERE conv_dbid=" + str(conv_id) + " ORDER BY id ASC")
@@ -262,6 +253,7 @@ for c1row in c1rows:
 
     for row in rows:
         foo = {'type': 'call', 'timestamp': row['begin_timestamp'], 'host': row['host_identity'], 'duration': row['duration'], 'is_incoming': row['is_incoming'], 'conv_dbid': row['conv_dbid'], 'current_video_audience': row['current_video_audience'], 'id': row['id'], 'members': {}}
+        print(foo)
 
         # get data from callmembers
         c2.execute("SELECT id,identity,dispname,call_duration,videostatus,debuginfo,guid,start_timestamp,call_db_id FROM callmembers WHERE call_db_id=" + str(row['id']))
@@ -345,8 +337,6 @@ for c1row in c1rows:
                 body_str = "<li><strong>BEGIN DAY %d</strong></li>" % (num_day_files+1)
             else:
                 body_str = "<li><strong>%s</strong></li>" % foo
-            
-
         if EVENTS[key]['type'] == "chat":
             body_str += format_chat(EVENTS[key])
         elif EVENTS[key]['type'] == "call":
@@ -365,21 +355,23 @@ for c1row in c1rows:
             sys.stderr.write("ERROR: invalid type for key " + str(key) + "\n")
 
     # ok, got all strings, start the output...
-    outfile = OUTDIR + str(conv_identity_safe) + "-all.html"
-    FILES.append(outfile)
-    fh = codecs.open(outfile, "w", "utf-8")
-    fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
-    fh.write(toc_str)
-    fh.write("<ul>\n" + all_body_str + "</ul>\n")
-    fh.write("</body></html>")
-    fh.close
+    if len(all_body_str) > 0:
+        outfile = OUTDIR + str(conv_identity_safe) + "-all.html"
+        FILES.append(outfile)
+        fh = codecs.open(outfile, "w", "utf-8")
+        fh.write("<html><head><title>Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
+        fh.write(toc_str)
+        fh.write("<ul>\n" + all_body_str + "</ul>\n")
+        fh.write("</body></html>")
+        fh.close
 
-    grepfile = OUTDIR + str(conv_identity_safe) + "-highlights.html"
-    fh = codecs.open(grepfile, "w", "utf-8")
-    fh.write("<html><head><title>Highlights in Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
-    fh.write("<ul>\n" + grep_str + "</ul>\n")
-    fh.write("</body></html>")
-    fh.close
+    if len(grep_str) > 0:
+        grepfile = OUTDIR + str(conv_identity_safe) + "-highlights.html"
+        fh = codecs.open(grepfile, "w", "utf-8")
+        fh.write("<html><head><title>Highlights in Skype Conversation with " + conv_identity + "</title></head></html><body>\n")
+        fh.write("<ul>\n" + grep_str + "</ul>\n")
+        fh.write("</body></html>")
+        fh.close
 # env loop over conversations
 
 conn.close()
