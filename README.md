@@ -89,5 +89,6 @@ file.
 * __watch_cloudformation.py__ - Python script to watch a CloudFormation stack's events, and exit when the CF stack update or create finishes. Optional notification via PushOver.
 * __watch_elasticsearch.py__ - Python script to watch an ElasticSearch cluster's status and exit/notify when the status changes. Optional notifivation via PushOver.
 * __watch_jenkins.py__ - Python script using python-jenkins (https://pypi.python.org/pypi/python-jenkins) to watch a job (specified by URL), and exit 0 on success or 1 on failure. Optional notification via PushOver.
+* __where_is_my_pi_zero.py__ - Python script to find in-stock Raspberry Pi Zero
 * __wiki-to-deckjs.py__ - simple, awful script to change markdown-like (very restricted markup set) markup to deck.js-ready html
 * __wordpress_daily_post.php__ - Script to publish the oldest post with a given status, if no other post has been published in 24 hours. Intended to be run via cron on weekdays

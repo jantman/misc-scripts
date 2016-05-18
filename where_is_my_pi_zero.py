@@ -27,6 +27,7 @@ import sys
 import re
 import argparse
 import requests
+import json
 from datetime import datetime
 
 import smtplib
@@ -52,20 +53,11 @@ class PiZeroChecker:
         self.gmail_user = None
         self.gmail_password = None
         if not no_mail:
-            self.get_gmail_creds()
-        self.get_stores()
+            self.gmail_creds()
 
     def run(self, mail_success=False, no_uk=False):
         """run the actual check, send mail if desired"""
-        results = {}
-        for s in self.stores:
-            results[s] = self.get_store(s)
-            logger.warning('%s - %s', s, results[s])
-        if no_uk:
-            logger.debug('Removing UK stores from results (%s)', UK_STORES)
-            for s in UK_STORES:
-                if s in results:
-                    del results[s]
+        results = self.check_stock(no_uk)
         have_stock = False
         for s in results:
             if results[s] is True:
@@ -73,6 +65,37 @@ class PiZeroChecker:
                 have_stock = True
         logger.debug('have_stock=%s', have_stock)
         msg = self.format_msg(results)
+
+    def check_stock(self, no_uk=False):
+        """
+        query the current stock status from the stores
+
+        returns a dict with store names as keys and values of:
+        - True - in-stock
+        - False - out-of-stock
+        - None - unknown
+        """
+        results = {}
+        for fname in dir(self):
+            if not fname.startswith('get_'):
+                continue
+            storename = fname[4:]
+            if storename in UK_STORES and no_uk:
+                logger.debug('Skipping UK store: %s', storename)
+                continue
+            meth = getattr(self, fname)
+            try:
+                res = meth()
+            except Exception:
+                logger.exception('caught exception checking %s', storename)
+                res = None
+            if res is None:
+                logger.warning('%s returned None; ignoring', fname)
+            elif res is True or res is False:
+                results[storename] = res
+            else:
+                results.update(res)
+        return results
 
     def format_msg(self, results):
         """format an email message with results"""
@@ -88,32 +111,7 @@ class PiZeroChecker:
             m += "\n"
         return m
 
-    def get_store(s, name):
-        """
-        get the status for a given store
-
-        returns:
-        True - in-stock
-        False - out-of-stock
-        None - unknown
-        """
-        url = 'http://whereismypizero.com/api/public/stock/%s' % name
-        logger.debug('getting store %s from %s', name, url)
-        r = requests.get(url)
-        r.raise_for_status()
-        j = r.json()
-        logger.debug('response: %s' % j)
-        if name not in j:
-            logger.error('Error: could not find response element for %s - %s',
-                         name, j)
-            return None
-        if 'class="in-stock"' in j[name]:
-            return False
-        elif 'class="sold-out"' in j[name]:
-            return True
-        return None
-
-    def get_gmail_creds(self):
+    def gmail_creds(self):
         """load gmail credentials"""
         if 'GMAIL_USERNAME' in os.environ and 'GMAIL_PASSWORD' in os.environ:
             logger.debug('setting GMail credentials from environment vars')
@@ -133,26 +131,6 @@ class PiZeroChecker:
             raise SystemExit("Error: could not find GMail credentials in "
                              "environment variables or ~/.ssh/apikeys.py")
 
-    def get_stores(self):
-        """grab the list of stores to check from the JS"""
-        url = 'http://whereismypizero.com/js/api_calls.js'
-        logger.debug('getting list of stores from: %s', url)
-        r = requests.get(url)
-        r.raise_for_status()
-        m = re.search(r'var stores=\[([^\]]+)\]', r.text)
-        if m is None:
-            logger.debug('script content:\n%s', r.text)
-            raise SystemExit("Error: could not find stores variable in JS")
-        logger.debug('raw stores list: %s', m.group(1))
-        parts = m.group(1).split(',')
-        stores = []
-        for p in parts:
-            p = p.strip('"\'')
-            p = p.strip()
-            stores.append(p)
-        logger.debug('stores: %s', stores)
-        return stores
-
     def send_email(self, subj, content):
         """send email"""
         msg = MIMEText(content)
@@ -170,6 +148,77 @@ class PiZeroChecker:
         s.sendmail(self.gmail_user, [self.gmail_user], msg.as_string())
         s.quit()
 
+    def url_get(self, url):
+        logger.debug('GETing %s', url)
+        r = requests.get(url)
+        r.raise_for_status()
+        return r
+
+    """ BEGIN GETTERS """
+
+    def get_adafruit(self):
+        urls = [
+            'https://www.adafruit.com/products/2885',
+            'https://www.adafruit.com/products/2817',
+            'https://www.adafruit.com/products/2816'
+        ]
+        have_stock = None
+        for url in urls:
+            logger.debug('checking adafruit: %s', url)
+            r = self.url_get(url)
+            if 'IN STOCK' in r.text:
+                logger.info('found in-stock for %s', url)
+                return True
+            if 'OUT OF STOCK' in r.text:
+                logger.info('found out-of-stock for %s', url)
+                have_stock = False
+        return have_stock
+
+    def get_pisupply(self):
+        url = 'https://www.pi-supply.com/product/raspberry-pi-zero-cable-kit/'
+        logger.debug('checking pisupply - %s', url)
+        r = self.url_get(url)
+        if 'class="stock out-of-stock"' in r.text:
+            logger.info('found out-of-stock class for pisupply')
+            return False
+        if 'class="stock in-stock"' in r.text:
+            logger.info('found in-stock class for pisupply')
+            return True
+        return None
+
+    def get_pimoroni(self):
+        url = 'https://shop.pimoroni.com/products/raspberry-pi-zero.js'
+        return self.shopify_get('pimoroni', url)
+
+    def shopify_get(self, store, url):
+        logger.debug('checking %s at %s', store, url)
+        r = self.url_get(url)
+        for v in r.json()['variants']:
+            if v['inventory_quantity'] > 0:
+                logger.info('%s has stock based on variant %s %s (%s) '
+                            'quantity %s', store, v['id'], v['sku'], v['title'],
+                            v['inventory_quantity'])
+                return True
+        return False
+
+    def get_thepihut(self):
+        url = 'https://thepihut.com/products/raspberry-pi-zero.js'
+        return self.shopify_get('thepihut', url)
+
+    def get_element14(self):
+        url =         'https://www.element14.com/community/docs/DOC-79263/l/' \
+                      'introducing-the-raspberry-pi-zero'
+        logger.debug('checking element14 at %s', url)
+        r = self.url_get(url)
+        if '<span style="color: #ff0000;">SOLD OUT</span>' in r.text:
+            logger.info('element14 SOLD OUT for %s', url)
+            return False
+        if 'Buy Now</a>' in r.text:
+            logger.info('element14 Buy Now button on %s', url)
+            return True
+        return None
+
+    """ END GETTERS """
 
 def parse_args(argv):
     """
