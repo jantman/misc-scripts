@@ -209,7 +209,7 @@ def write_per_day_file(s, OUTDIR, fname, conv_identity, filedate):
 
 conn = sqlite3.connect(FILE)
 if conn == None:
-    print "ERROR: could not connect to database file '" + FILE + "'."
+    print("ERROR: could not connect to database file '" + FILE + "'.")
     sys.exit(1)
 
 conn.row_factory = sqlite3.Row
@@ -253,19 +253,19 @@ for c1row in c1rows:
 
     for row in rows:
         foo = {'type': 'call', 'timestamp': row['begin_timestamp'], 'host': row['host_identity'], 'duration': row['duration'], 'is_incoming': row['is_incoming'], 'conv_dbid': row['conv_dbid'], 'current_video_audience': row['current_video_audience'], 'id': row['id'], 'members': {}}
-        print(foo)
+        print("call:", foo)
 
         # get data from callmembers
         c2.execute("SELECT id,identity,dispname,call_duration,videostatus,debuginfo,guid,start_timestamp,call_db_id FROM callmembers WHERE call_db_id=" + str(row['id']))
         rows2 = c2.fetchall()
 
         for row2 in rows2:
-			foo['members'][row2['identity']] = row2
+            foo['members'][row2['identity']] = row2
         key = ( row['begin_timestamp'] * 100 )
         while key in EVENTS:
             key = key + 1
         EVENTS[key] = foo
-    
+
     # add messages to EVENTS dict
     cursor.execute("SELECT id, convo_id, chatname, author, from_dispname, dialog_partner, timestamp, type, sending_status, consumption_status, body_xml, participant_count, chatmsg_type, chatmsg_status, call_guid FROM messages WHERE convo_id=" + str(conv_id) + " ORDER BY id ASC")
     rows = cursor.fetchall()
@@ -315,6 +315,7 @@ for c1row in c1rows:
     num_day_files = 0
 
     for key in sorted(EVENTS.iterkeys()):
+        print(key, EVENTS[key])
         foo = datetime.datetime.fromtimestamp(EVENTS[key]['timestamp']).strftime('%a %b %d %Y')
         if HIDE_DATES is True:
             cur_day_fname = "%s_%03d.html" % (str(conv_identity_safe), num_day_files)
