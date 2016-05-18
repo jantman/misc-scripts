@@ -43,6 +43,7 @@ logging.basicConfig(level=logging.ERROR, format=FORMAT)
 logger = logging.getLogger(__name__)
 
 UK_STORES = ['pimoroni', 'thepihut']
+MICROCENTER_RE = re.compile(r'<span class="inventoryCnt">(Sold Out|\d in stock)</span>')
 
 
 class PiZeroChecker:
@@ -58,24 +59,23 @@ class PiZeroChecker:
     def run(self, mail_success=False, no_uk=False):
         """run the actual check, send mail if desired"""
         results = self.check_stock(no_uk)
-        have_stock = False
-        for s in results:
-            if results[s] is True:
-                logger.debug('have stock at %s', s)
-                have_stock = True
-        logger.debug('have_stock=%s', have_stock)
-        msg = self.format_msg(results)
+        msg = "PiZero stock as of %s\n\n%s" % (
+            datetime.now().isoformat(), results
+        )
+        print(msg)
+        if self.gmail_user is None:
+            return
+        if mail_success and 'IN STOCK' not in results:
+            return
+        if 'IN STOCK' in results:
+            subj = 'RPi Zero FOUND IN STOCK'
+        else:
+            subj = 'RPi Zero still not in stock'
+        self.send_email(subj, results)
 
     def check_stock(self, no_uk=False):
-        """
-        query the current stock status from the stores
-
-        returns a dict with store names as keys and values of:
-        - True - in-stock
-        - False - out-of-stock
-        - None - unknown
-        """
-        results = {}
+        """query the current stock status from the stores"""
+        results = ''
         for fname in dir(self):
             if not fname.startswith('get_'):
                 continue
@@ -89,27 +89,8 @@ class PiZeroChecker:
             except Exception:
                 logger.exception('caught exception checking %s', storename)
                 res = None
-            if res is None:
-                logger.warning('%s returned None; ignoring', fname)
-            elif res is True or res is False:
-                results[storename] = res
-            else:
-                results.update(res)
+            results += res + "\n"
         return results
-
-    def format_msg(self, results):
-        """format an email message with results"""
-        m = "PiZero stock as of %s\n\n" % datetime.now().isoformat()
-        for store, stock in sorted(results.items()):
-            m += '%s: ' % store
-            if stock is True:
-                m += 'IN STOCK'
-            elif stock is False:
-                m += 'out of stock'
-            else:
-                m += 'unknown'
-            m += "\n"
-        return m
 
     def gmail_creds(self):
         """load gmail credentials"""
@@ -167,12 +148,12 @@ class PiZeroChecker:
             logger.debug('checking adafruit: %s', url)
             r = self.url_get(url)
             if 'IN STOCK' in r.text:
-                logger.info('found in-stock for %s', url)
-                return True
+                return 'adafruit: IN STOCK (%s)' % url
             if 'OUT OF STOCK' in r.text:
-                logger.info('found out-of-stock for %s', url)
                 have_stock = False
-        return have_stock
+        if have_stock is False:
+            return 'adafruit: out of stock'
+        return 'adafruit: unknown'
 
     def get_pisupply(self):
         url = 'https://www.pi-supply.com/product/raspberry-pi-zero-cable-kit/'
@@ -180,10 +161,10 @@ class PiZeroChecker:
         r = self.url_get(url)
         if 'class="stock out-of-stock"' in r.text:
             logger.info('found out-of-stock class for pisupply')
-            return False
+            return 'pisupply: out of stock (%s)' % url
         if 'class="stock in-stock"' in r.text:
             logger.info('found in-stock class for pisupply')
-            return True
+            return 'pisupply: IN STOCK (%s)' % url
         return None
 
     def get_pimoroni(self):
@@ -198,8 +179,10 @@ class PiZeroChecker:
                 logger.info('%s has stock based on variant %s %s (%s) '
                             'quantity %s', store, v['id'], v['sku'], v['title'],
                             v['inventory_quantity'])
-                return True
-        return False
+                return '%s: IN STOCK (%s of %s (%s))' % (
+                    store, v['inventory_quantity'], v['sku'], v['title']
+                )
+        return '%s: out of stock' % store
 
     def get_thepihut(self):
         url = 'https://thepihut.com/products/raspberry-pi-zero.js'
@@ -212,9 +195,69 @@ class PiZeroChecker:
         r = self.url_get(url)
         if '<span style="color: #ff0000;">SOLD OUT</span>' in r.text:
             logger.info('element14 SOLD OUT for %s', url)
-            return False
+            return 'element14: out of stock (%s)' % url
         if 'Buy Now</a>' in r.text:
             logger.info('element14 Buy Now button on %s', url)
+            return 'element14: IN STOCK (%s)' % url
+        return None
+
+    def get_microcenter(self):
+        result = ''
+        stores = {
+            "101": 'CA - Orange County/Tustin',
+            "181": 'CO - Denver/Denver Tech Center',
+            "065": 'GA - Greater Atlanta/Duluth',
+            "041": 'GA - Greater Atlanta/Marietta',
+            "151": 'IL - Chicagoland/Central',
+            "025": 'IL - Chicagoland/Westmont',
+            "191": 'KS - Kansas City/Overland Park',
+            "121": 'MA - Boston/Cambridge',
+            "085": 'MD - Beltway/Rockville',
+            "125": 'MD - Baltimore/Towson',
+            "055": 'MI - Detroit/Madison Heights',
+            "045": 'MN - Twin Cities/St. Louis Park',
+            "095": 'MO - St. Louis/Brentwood',
+            "075": 'NJ - North Jersey / Paterson',
+            "171": 'NY - Long Island/Westbury',
+            "115": 'NY - Brooklyn/Gowanus Expy',
+            "145": 'NY - Queens / Flushing',
+            "105": 'NY - Westchester County/Yonkers',
+            "141": 'OH - Central Ohio/Columbus',
+            "051": 'OH  - Northeast Ohio/Mayfield Heights',
+            "071": 'OH - Cincinnati/Sharonville',
+            "061": 'PA - Philadelphia/St. Davids',
+            "155": 'TX - Houston - New Location',
+            "131": 'TX - Dallas Metroplex/Richardson',
+            "081": 'VA - Northern Virginia/Fairfax',
+            "029": 'Micro Center Web Store'
+        }
+        for storeID, storeName in stores.items():
+            try:
+                res = self.microcenter_get(storeID)
+                if res is True:
+                    result += "microcenter: IN STOCK (store %s - %s)\n" % (
+                        storeID, storeName
+                    )
+                    logger.info('Have stock at MicroCenter store %s (%s)',
+                                storeID, storeName)
+            except Exception:
+                logger.exception('exception while getting microcenter store '
+                                 '%s', storeID)
+        if result != '':
+            return result
+        return 'microcenter: out of stock'
+
+    def microcenter_get(self, storeID):
+        url = 'http://www.microcenter.com/product/457746/Zero_Development_Board'
+        logger.debug('checking MicroCenter store %s', storeID)
+        r = requests.post(url, data={'storeID': storeID})
+        r.raise_for_status()
+        m = MICROCENTER_RE.search(r.text)
+        if m.group(1) == 'Sold Out':
+            logger.debug('sold out at microcenter store %s', storeID)
+            return False
+        if 'in stock' in m.group(1):
+            logger.info('%s at microcenter store %s', m.group(1), storeID)
             return True
         return None
 
