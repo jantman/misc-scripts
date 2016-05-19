@@ -56,13 +56,14 @@ class PiZeroChecker:
         if not no_mail:
             self.gmail_creds()
 
-    def run(self, mail_success=False, no_uk=False):
+    def run(self, mail_success=False, no_uk=False, no_echo=False):
         """run the actual check, send mail if desired"""
         results = self.check_stock(no_uk)
         msg = "PiZero stock as of %s\n\n%s" % (
             datetime.now().isoformat(), results
         )
-        print(msg)
+        if not no_echo:
+            print(msg)
         if self.gmail_user is None:
             return
         if mail_success and 'IN STOCK' not in results:
@@ -274,6 +275,8 @@ def parse_args(argv):
                                 'availability')
     p.add_argument('-m', '--no-mail', dest='no_mail', action='store_true',
                    default=False, help='dont send mail via GMail')
+    p.add_argument('-n', '--no-echo', dest='no_echo', action='store_true',
+                   default=False, help='do not echo stock to STDOUT when done')
     p.add_argument('-s', '--mail-success', dest='mail_success',
                    action='store_true', default=False,
                    help='only send mail on success')
@@ -291,4 +294,4 @@ if __name__ == "__main__":
     elif args.verbose > 0:
         logger.setLevel(logging.INFO)
     script = PiZeroChecker(no_mail=args.no_mail)
-    script.run(args.mail_success, args.no_uk)
+    script.run(args.mail_success, args.no_uk, args.no_echo)
