@@ -17,6 +17,8 @@ Either export as GMAIL_USERNAME and GMAIL_PASSWORD environment variables,
 or define as GMAIL_USERNAME and GMAIL_PASSWORD in ~/.ssh/apikeys.py
 
 CHANGELOG:
+2016-05-19 jantman:
+- fix microcenter issue
 2016-05-18 jantman:
 - first version
 
@@ -254,6 +256,8 @@ class PiZeroChecker:
         r = requests.post(url, data={'storeID': storeID})
         r.raise_for_status()
         m = MICROCENTER_RE.search(r.text)
+        if m is None:
+            return None
         if m.group(1) == 'Sold Out':
             logger.debug('sold out at microcenter store %s', storeID)
             return False
