@@ -17,6 +17,8 @@ Either export as GMAIL_USERNAME and GMAIL_PASSWORD environment variables,
 or define as GMAIL_USERNAME and GMAIL_PASSWORD in ~/.ssh/apikeys.py
 
 CHANGELOG:
+2016-05-22 jantman:
+- fix unhandled exception in check_stock()
 2016-05-19 jantman:
 - fix microcenter issue
 2016-05-18 jantman:
@@ -91,7 +93,7 @@ class PiZeroChecker:
                 res = meth()
             except Exception:
                 logger.exception('caught exception checking %s', storename)
-                res = None
+                res = "%s: unknown (exception)\n" % storename
             results += res + "\n"
         return results
 
