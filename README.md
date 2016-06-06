@@ -66,6 +66,7 @@ file.
 * __rsync-wrapper.c__ - setuid/gid wrapper around rsync. Useful to allow members of a specified group to do rsync backups as root over SSH.
 * __rsyslogIsHung.php__ - script to investigate rsyslog hangs, write output, and send mail
 * __rsyslogPstats.php__ - script to parse rsyslog impstats output and generate a simple report
+* __ruby_simplecov_diff.rb__ - Given two Ruby simplecov output directories, show the differences
 * __s3sync_inotify.py__ - Python script using boto and pyinotify to watch a directory and sync all files in it to an S3 bucket, and update an index.html file for the bucket.
 * __savescreen.py__ - Python script to save screen windows and titles, and write a screenrc to recreate them.
 * __scrape_domain.py__ - Python script using requests and BeautifulSoup4 to request all URLs/links/images/CSS/feeds/etc. found on a domain.
