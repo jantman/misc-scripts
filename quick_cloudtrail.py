@@ -81,6 +81,21 @@ class QuickCloudtrail:
                     break
         return res
 
+    def search_accessKeyId(self, users):
+        """find all logs relating to the specified Access Key ID"""
+        res = []
+        for i in self.logs:
+            if 'userIdentity' not in i:
+                continue
+            if 'accessKeyId' not in i['userIdentity']:
+                continue
+            for u in users:
+                if u.lower().strip() == i['userIdentity'
+                ]['accessKeyId'].lower().strip():
+                    res.append(i)
+                    break
+        return res
+
     def search_request(self, req_ids):
         """find all logs for the specified request ID(s)"""
         res = []
