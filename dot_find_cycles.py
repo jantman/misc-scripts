@@ -9,9 +9,12 @@ By Jason Antman <jason@jasonantman.com> 2012.
 
 Free for all use, provided that you send any changes you make back to me, update the changelog, and keep this comment intact.
 
+NOTICE - IMPORTANT:
+This script was written in 2011 or 2012. You'll need networkx <= 1.10.
+
 REQUIREMENTS:
 Python
-python-networkx - <http://networkx.lanl.gov/>
+python-networkx - <http://networkx.lanl.gov/> <= 1.10
 graphviz-python - <http://www.graphviz.org/>
 pydot - <http://code.google.com/p/pydot/>
 (all of these are available as native packages at least on CentOS)
