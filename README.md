@@ -49,6 +49,7 @@ file.
 * __linode_ddns_update.sh__ - simple script to use Linode's HTTP API to update Linode DNS for a dynamic IP
 * __linodeDnsToCsv.php__ - Script to pull DNS information for all of your Linode hosted zones, output as CSV
 * __linode_list_records.py__ - Simple script to list all records in Linode DNS via API, along with their type, DomainID and ResourceID
+* __list_all_aws_resources_skew.py__ - Script using [skew](https://github.com/scopely-devops/skew) to list all AWS resources in your account
 * __list_github_org_repos.py__ - List information about an org's repositories using PyGithub (GitHub API library)
 * __make_puppet_param_markdown.py__ - # Python script to generate MarkDown docblock fragment for all parameters of a Puppet parameterized class or define. Simple, naive regex matching. Assumes you style your manifests properly.
 * __mw2html-auth__ - Produce an HTML version (standalone backup/export) of a MediaWiki site that's behind authentication
