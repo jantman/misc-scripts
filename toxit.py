@@ -11,6 +11,8 @@ Copyright 2016 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2016-07-05 Jason Antman <jason@jasonantman.com>:
+  - bug fixes
 2016-07-03 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -23,7 +25,7 @@ import subprocess
 from ConfigParser import SafeConfigParser
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-logging.basicConfig(level=logging.ERROR, format=FORMAT)
+logging.basicConfig(level=logging.INFO, format=FORMAT)
 logger = logging.getLogger(__name__)
 
 
@@ -83,9 +85,9 @@ class ToxIt(object):
             if s == 'testenv':
                 default_cmds = cmds
                 continue
-            if not s.startswith('toxenv:'):
-                logger.info('Ignoring section: %s', s)
-            s = s[7:]
+            if not s.startswith('testenv:'):
+                logger.debug('Ignoring section: %s', s)
+            s = s[8:]
             env_cmds[s] = cmds
         for e in envs:
             if e not in env_cmds:
@@ -151,17 +153,16 @@ def parse_args(argv):
     p = argparse.ArgumentParser(description='Re-run tox test commands for a '
                                 'given environment against the '
                                 'already-existing and installed virtualenv.')
-    p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
-                   help='verbose output. specify twice for debug-level output.')
+    p.add_argument('-v', '--verbose', dest='verbose', action='store_true',
+                   default=False,
+                   help='verbose output')
     p.add_argument('TOXENV', type=str, nargs='+', help='Tox environment name')
     return p.parse_args(argv)
 
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    if args.verbose > 1:
+    if args.verbose:
         logger.setLevel(logging.DEBUG)
-    elif args.verbose > 0:
-        logger.setLevel(logging.INFO)
     script = ToxIt()
     script.run(args.TOXENV)
