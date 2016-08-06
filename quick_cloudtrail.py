@@ -12,6 +12,9 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2016-08-06 Jason Antman <jason@jasonantman.com>:
+  - add option to only output the API methods called in matching records
+
 2016-03-21 Jason Antman <jason@jasonantman.com>:
   - add option to output results as a JSON list
 
@@ -220,6 +223,10 @@ def parse_args(argv):
     p.add_argument('-j', '--json', dest='json', action='store_true',
                    default=False, help='instead of pretty-printing output, print'
                    ' output as JSON')
+    p.add_argument('-l', '--list-actions', dest='list_actions',
+                   action='store_true', default=False,
+                   help='only output a list of distinct AwsApiCall method names'
+                        'from the matching results')
     p.add_argument('search_type', metavar='SEARCH_TYPE', type=str,
                    help='type of search to perform')
     p.add_argument('query', metavar='QUERY', type=str, nargs='+',
@@ -245,6 +252,15 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if args.json:
         print(json.dumps(res))
+        raise SystemExit(0)
+    if args.list_actions:
+        actions = set()
+        for r in res:
+            if r['eventType'] != 'AwsApiCall':
+                continue
+            actions.add(r['eventSource'] + ':' + r['eventName'])
+        for a in sorted(actions):
+            print(a)
         raise SystemExit(0)
     for r in res:
         print(qt.format_log(r))
