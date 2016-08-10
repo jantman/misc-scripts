@@ -27,6 +27,7 @@ CHANGELOG
 
 2016-08-10 Jason Antman <jason@jasonantman.com>:
   - nicer logging setup and docstring
+  - new-style class
 2015-07-06 Jason Antman <jason@jasonantman.com>:
   - switch to module-level logger
 2014-12-25 Jason Antman <jason@jasonantman.com>:
@@ -48,7 +49,7 @@ logging.basicConfig(level=logging.WARNING, format=FORMAT)
 logger = logging.getLogger()
 
 
-class SimpleScript:
+class SimpleScript(object):
     """ might as well use a class. It'll make things easier later. """
 
     def __init__(self, dry_run=False):
