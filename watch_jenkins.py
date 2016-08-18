@@ -20,13 +20,17 @@ https://github.com/jantman/misc-scripts/blob/master/watch_jenkins.py
 
 CHANGELOG:
 
-2014-12-12 jantman:
-- initial script
-2014-12-14 jantman:
-- add better links to config docs
+2016-08-17 jantman:
+- environment variables for username and password
+- change get_job_name_and_build_number(url) algorithm to be a bit more naive,
+  but properly handle namespaced jobs from the Folders plugin.
 2015-11-15 jantman:
 - switch from optparse to argparse
 - add support for authenticated access
+2014-12-14 jantman:
+- add better links to config docs
+2014-12-12 jantman:
+- initial script
 """
 
 import sys
@@ -81,6 +85,7 @@ def main(build_url, sleeptime=15, pushover=False, user=None, password=None):
     build_url = get_formal_build_url(jenkins_url, job_name, build_no)
     print("Watching job {j} #{b} until completion <{u}>...".format(j=job_name, b=build_no, u=build_url))
     while True:
+        logger.debug("Getting build info...")
         buildinfo = j.get_build_info(job_name, build_no)
         if not buildinfo['building']:
             # job is not still building
@@ -114,26 +119,24 @@ def notify_pushover(result, job_name, build_no, duration, build_url):
 
 def get_job_name_and_build_number(url):
     """
-    Shamelessly stolen from twoline-utils by @coddingtonbear
-    https://github.com/coddingtonbear/twoline-utils/blob/master/twoline_utils/commands.py
-    licensed under MIT license, Copyright 2014 Adam Coddington
-
-    with slight modifications for job without build number
+    Simple, naive implementation of getting job name and build number from URL.
     """
-    logger.debug(url)
+    # strip /console if present
     if url.endswith('/console'):
         url = url[:len(url) - 8]
-        logger.debug("stripped url to: %s", url)
-    job_build_matcher = re.compile(
-        ".*/job/(?P<job>[^/]+)/((?P<build_number>[^/]+)/.*)?"
-    )
-    tmp = job_build_matcher.search(url)
-    tmp = tmp.groups()
-    job = tmp[0]
-    if tmp[2] is not None:
-        build_no = int(tmp[2])
-    else:
-        build_no = None
+    # make sure it's a job URL
+    if 'job/' not in url:
+        raise Exception("Could not parse URL - 'job/' not in %s" % url)
+    # if it ends in a build number, capture that and then strip it
+    build_no = None
+    m = re.match(r'.*(/\d+/?)$', url)
+    if m is not None and m.group(1) != '':
+        build_no = int(m.group(1).strip('/'))
+        url = url[:(-1 * len(m.group(1))) + 1]
+    # get the path
+    parsed = urlparse(url)
+    # simple, naive job URL parsing
+    job = parsed.path.replace('job/', '').strip('/')
     return job, build_no
 
 def get_formal_build_url(jenkins_url, job_name, build_no):
@@ -168,12 +171,15 @@ def parse_args(argv):
                    type=int, default=15, help='time in seconds to sleep '
                    'between status checks; default 15')
     p.add_argument('-u', '--user', dest='user', action='store', type=str,
-                   default=None, help='Jenkins username (optional)')
+                   default=None, help='Jenkins username (optional); will be '
+                                      'read from JENKINS_USER environment '
+                                      'variable if that is set.')
     p.add_argument('-p', '--password', dest='password', action='store',
                    type=str,
                    default=None, help='Jenkins password (optional; if -u/--user'
                    ' is specified and this is not, you will be interactively '
-                   'prompted')
+                   'prompted); will be read from JENKINS_PASS environment '
+                   'variable if that is set.')
 
     push_default = False
     if os.path.exists(os.path.expanduser('~/.watch_jenkins_pushover')):
@@ -187,6 +193,12 @@ def parse_args(argv):
                    help='Build URL')
 
     args = p.parse_args(argv)
+    if args.user is None and 'JENKINS_USER' in os.environ:
+        logger.warning('Setting username from JENKINS_USER env var.')
+        args.user = os.environ['JENKINS_USER']
+    if args.password is None and 'JENKINS_PASS' in os.environ:
+        logger.warning('Setting password from JENKINS_PASS env var.')
+        args.password = os.environ['JENKINS_PASS']
     if args.user is not None and args.password is None:
         args.password = getpass.getpass("Password for %s Jenkins "
                                         "user: " % args.user)
