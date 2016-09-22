@@ -31,6 +31,7 @@ import argparse
 import logging
 from datetime import datetime, timedelta
 from base64 import b64decode
+from textwrap import dedent
 
 try:
     from lxml import etree
@@ -49,6 +50,20 @@ FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
 logger = logging.getLogger()
 
+CALL_TYPES = {
+    '1': 'Incoming call from',
+    '2': 'Outgoing call to',
+    '3': 'Missed call from',
+    '4': 'Voicemail from',
+    '5': 'Rejected call from',
+    '6': 'Refused List call from'
+}
+
+SMS_TYPES = {
+    '1': 'Received from',
+    '2': 'Sent to',
+    '3': 'Draft to'
+}
 
 class SMSdumper(object):
 
@@ -80,14 +95,13 @@ class SMSdumper(object):
 
     def parse_calls(self):
         """parse calls XML"""
-        tree = etree.parse(self.calls_path,
-                           parser=etree.XMLParser(huge_tree=True))
+        tree = etree.parse(self.calls_path)
         root = tree.getroot()
         calls = {}
         for call in root.xpath('//call'):
             name = call.attrib['number']
             if ('contact_name' in call.attrib and
-                        call.attrib['contact_name'] != ''):
+                    call.attrib['contact_name'] != ''):
                 name = call.attrib['contact_name']
             if name not in calls:
                 calls[name] = {}
@@ -97,7 +111,8 @@ class SMSdumper(object):
 
     def parse_sms(self):
         """parse SMS XML"""
-        tree = etree.parse(self.sms_path)
+        tree = etree.parse(self.sms_path,
+                           parser=etree.XMLParser(huge_tree=True))
         root = tree.getroot()
         smses = {}
         for sms in root.xpath('//sms'):
@@ -113,7 +128,7 @@ class SMSdumper(object):
         for mms in root.xpath('//mms'):
             name = mms.attrib['address']
             if ('contact_name' in mms.attrib and
-                        mms.attrib['contact_name'] != ''):
+                    mms.attrib['contact_name'] != ''):
                 name = mms.attrib['contact_name']
             if name not in smses:
                 smses[name] = {}
@@ -173,7 +188,7 @@ class SMSdumper(object):
             pass
         with open(fpath, 'wb') as fh:
             fh.write(data)
-        return fpath
+        return os.path.join('media', self.fs_safe_name(fn))
 
     def write_contact_output(self, name):
         """
@@ -183,56 +198,147 @@ class SMSdumper(object):
         :type name: str
         """
         c_data = {}
-        for dt, data in self.calls[name].iteritems():
-            data['_record_type'] = 'call'
-            while dt in c_data:
-                dt = dt + timedelta(microseconds=1)
-            c_data[dt] = data
-        for dt, data in self.smses[name].iteritems():
-            data['_record_type'] = 'sms'
-            while dt in c_data:
-                dt = dt + timedelta(microseconds=1)
-            c_data[dt] = data
+        if name in self.calls:
+            for dt, data in self.calls[name].iteritems():
+                data['_record_type'] = 'call'
+                while dt in c_data:
+                    dt = dt + timedelta(microseconds=1)
+                c_data[dt] = data
+        if name in self.smses:
+            for dt, data in self.smses[name].iteritems():
+                data['_record_type'] = 'sms'
+                while dt in c_data:
+                    dt = dt + timedelta(microseconds=1)
+                c_data[dt] = data
         html = self.contact_html(name, c_data)
-        fpath = os.path.join(self.mediadir, self.fs_safe_name(name + '.html'))
+        fpath = os.path.join(self.outdir, self.fs_safe_name(name + '.html'))
         with open(fpath, 'w') as fh:
-            fh.write(html)
+            fh.write(html.encode('utf-8'))
         logger.info('HTML for %s written to: %s', name, fpath)
 
     def contact_html(self, name, contact_data):
         """return HTML string for the contact"""
-        s = "<html>\n"
-        s += "<head><title>Calls and SMS for %s</title></head>\n" % name
-        s += "<body>\n"
+        s = dedent("""
+        <html>
+        <head>
+        <title>Calls and SMS for %s</title>
+        <style type="text/css">
+        .date {
+            font-weight: bold;
+        }
+
+        .identifier {
+            font-weight: bold;
+        }
+
+        .outgoing {
+            color: blue;
+        }
+
+        .incoming {
+            color: red;
+        }
+
+        .imgdiv {
+            width: 200px;
+            height: 200px;
+        }
+
+        img {
+            width: auto;
+            height: auto;
+            max-width: 200;
+            max-height: 200;
+        }
+        </style>
+        </head>
+        <body>
+        """ % name)
         s += "<h1>Calls and SMS for %s</h1>\n" % name
         for dt in sorted(contact_data.keys()):
-            d = contact_data[dt]
-            self.format_record(dt, d)
-        s += "</body>\n"
-        s += "</html>\n"
+            s += self.format_record(dt, contact_data[dt])
+        s += "</body>\n</html>\n"
         return s
 
     def format_record(self, dt, data):
         s = '<p>'
-        s += '<span class="date" style="font-weight: bold;">'
+        s += '<span class="date">'
         s += dt.strftime("%a %Y-%m-%d %H:%M:%S") + ': '
         s += '</span>'
-        if d['_record_type'] == 'call':
-            s += self.format_call(d)
+        if data['_record_type'] == 'call':
+            s += self.format_call(data)
+        elif 'mms_parts' in data:
+            s += self.format_mms(data)
         else:
-            s += self.format_sms(d)
+            s += self.format_sms(data)
         s += "</p>\n"
         return s
 
     def format_call(self, data):
         """return formatted HTML for a call"""
-        print(data)
-        raise SystemExit()
-        return ''
+        call_type = CALL_TYPES.get(
+            data['type'], 'Unknown call type %s from' % data['type'])
+        identifier_class = 'outgoing'
+        if data['type'] != '2':
+            identifier_class = 'incoming'
+        duration = timedelta(seconds=int(data['duration']))
+        return '<span class="identifier %s">%s %s</span> %s call' % (
+            identifier_class,
+            call_type,
+            self.format_number(data['number']),
+            duration
+        )
 
     def format_sms(self, data):
-        """return formatted HTML for an SMS/MMS"""
-        return ''
+        """return formatted HTML for an MMS"""
+        sms_type = SMS_TYPES.get(
+            data['type'], 'Unknown SMS type %s' % data['type'])
+        identifier_class = 'outgoing'
+        if data['type'] == '1':
+            identifier_class = 'incoming'
+        return '<span class="identifier %s">%s %s:</span> %s' % (
+            identifier_class,
+            sms_type,
+            self.format_number(data['address']),
+            data['body']
+        )
+
+    def format_mms(self, data):
+        """return formatted HTML for an MMS"""
+        sms_type = SMS_TYPES.get(
+            data['msg_box'], 'Unknown MMS msg_box %s' % data['msg_box'])
+        identifier_class = 'outgoing'
+        if data['msg_box'] == '1':
+            identifier_class = 'incoming'
+        from_addr = 'unknown'
+        for addr in data['mms_addresses']:
+            if addr['type'] == '137':
+                from_addr = addr['address']
+        s = '<span class="identifier %s">%s %s:</span>' % (
+            identifier_class,
+            sms_type,
+            self.format_number(from_addr)
+        )
+        for part in data['mms_parts']:
+            if part['ct'] == 'application/smil':
+                continue
+            if part['ct'] == 'text/plain':
+                s += part['text'] + '<br />'
+            elif part['ct'].startswith('image/'):
+                s += '<a href="%s"><img src="%s" ' \
+                     'width="200" height="200" /></a>' % (
+                    part['data_file_path'], part['data_file_path']
+                )
+            else:
+                if 'data_file_path' in part:
+                    s += 'Unsupported attachment content type %s: %s' % (
+                        part['ct'],
+                        '<a href="%s">%s</a>' % (part['data_file_path'],
+                                                 part['data_file_path'])
+                    )
+                else:
+                    s += 'Unsupported attachment content type: %s' % part['ct']
+        return s
 
     @staticmethod
     def fs_safe_name(fname):
@@ -251,6 +357,17 @@ class SMSdumper(object):
             ]
         ).rstrip()
         return x
+
+    @staticmethod
+    def format_number(num):
+        """format a phone number"""
+        if len(num) == 10:
+            return '(' + num[:3] + ')' + num[3:6] + '-' + num[6:]
+        elif len(num) == 11:
+            return num[0] + '-' + num[1:4] + '-' + num[4:7] + '-' + num[7:]
+        elif len(num) == 7:
+            return num[:3] + '-' + num[3:]
+        return num
 
 
 def parse_args(argv):
