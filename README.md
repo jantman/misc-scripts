@@ -77,6 +77,7 @@ file.
 * __show_dhcp_fixed_ACKs.pl__ - script to show the most recent DHCP ACKs per IP address for ISC DHCPd, from a log file. Originally written for Vyatta routers that just show the dynamic leases
 * __simpleLCDproc.py__ - Simple LCDproc replacement in Python. Uses LCDd server.
 * __skeleton.py__ - Skeleton of a one-off Python CLI script, including optparse and logging.
+* __sms_backup_dump.py__ - Dump the XML SMS logs from the [SMS Backup and Restore](https://play.google.com/store/apps/details?id=com.riteshsahu.SMSBackupRestore&hl=en) Android app to HTML
 * __sync_git_clones.sh__ - __WIP / Alpha__ - Script to sync all local git clones in a list of paths with origin (and upstream, if configured). If present, uses github_clone_setup.py to setup upstream branches for any GitHub forks, and set refs to check out pull requests from origin and upstream.
 * __sync_git_clones.conf__ - config file for sync_git_clones.sh
 * __syslogAgeChecker.php__ - script to check timestamp of last syslog line in some files, and send mail if >= X seconds
