@@ -4,6 +4,8 @@ Process URL for intersphinx targets and emit html or text
 
 originally retrieved from:
 https://gist.github.com/gmr/11359058
+
+fixed for python3 and pep8 compliance by jantman
 """
 
 from sphinx.ext.intersphinx import read_inventory_v2
