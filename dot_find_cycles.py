@@ -9,16 +9,25 @@ By Jason Antman <jason@jasonantman.com> 2012.
 
 Free for all use, provided that you send any changes you make back to me, update the changelog, and keep this comment intact.
 
-NOTICE - IMPORTANT:
-This script was written in 2011 or 2012. You'll need networkx <= 1.10.
-
 REQUIREMENTS:
 Python
-python-networkx - <http://networkx.lanl.gov/> <= 1.10
+python-networkx - <http://networkx.lanl.gov/>
 graphviz-python - <http://www.graphviz.org/>
 pydot - <http://code.google.com/p/pydot/>
 pydotplus - <http://pydotplus.readthedocs.io/>
-(all of these are available as native packages at least on CentOS)
+
+To install requirements:
+
+    pip install networkx graphviz pydot pydotplus
+
+Last Test Requirement Versions:
+
+decorator==4.0.10
+graphviz==0.5.1
+networkx==1.11
+pydot==1.2.2
+pydotplus==2.0.2
+pyparsing==2.1.9
 
 USAGE:
 dot_find_cycles.py /path/to/file.dot
@@ -27,8 +36,14 @@ The canonical source of this script can always be found from:
 <http://blog.jasonantman.com/2012/03/python-script-to-find-dependency-cycles-in-graphviz-dot-files/>
 
 CHANGELOG:
-    Wednesday 2012-03-28 Jason Antman <jason@jasonantman.com>:
-        - initial script creation
+2016-09-24 Jason Antman <jason@jasonantman.com>:
+  - update docs to clarify the below
+
+2016-09-24 jrk07 <https://github.com/jrk07>:
+  - add pydotplus and fix read_dot import to work with modern networkx versions
+
+2012-03-28 Jason Antman <jason@jasonantman.com>:
+  - initial script creation
 """
 
 import sys
