@@ -17,6 +17,7 @@ Python
 python-networkx - <http://networkx.lanl.gov/> <= 1.10
 graphviz-python - <http://www.graphviz.org/>
 pydot - <http://code.google.com/p/pydot/>
+pydotplus - <http://pydotplus.readthedocs.io/>
 (all of these are available as native packages at least on CentOS)
 
 USAGE:
@@ -33,6 +34,7 @@ CHANGELOG:
 import sys
 from os import path, access, R_OK
 import networkx as nx
+from networkx.drawing.nx_pydot import read_dot
 
 def usage():
     sys.stderr.write("dot_find_cycles.py by Jason Antman <http://blog.jasonantman.com>\n")
@@ -57,7 +59,7 @@ def main():
 
 
     # read in the specified file, create a networkx DiGraph
-    G = nx.DiGraph(nx.read_dot(path))
+    G = nx.DiGraph(read_dot(path))
 
     C = nx.simple_cycles(G)
     for i in C:
