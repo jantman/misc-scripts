@@ -88,6 +88,7 @@ file.
 * __timeout__ - shell script to execute a command with a timeout
 * __tomtom_tsp.py__ - Script to take a list of [TomTom](http://wow.curseforge.com/addons/tomtom/) WoW addon coordinates and output them in the optimal order.
 * __toxit.py__ - Script to parse a tox.ini file, and run the test commands inside an existing virtualenv, against the code already installed there.
+* __trello_ensure_card.py__ - Script to ensure that a card with the given title (and optionally other attributes) exists in the specified column of the specified board.
 * __trello_push_due_dates.py__ - Script to push all due dates on a Trello board (optionally in one list) back by N days.
 * __twitter_find_followed_not_in_list.py__ - Simple script to list anyone whom you're following but isn't in one of your lists.
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
