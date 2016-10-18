@@ -57,6 +57,7 @@ file.
 * __mw2html-auth__ - Produce an HTML version (standalone backup/export) of a MediaWiki site that's behind authentication
 * __nagios_log_problem_interval.pl__ - Chart intervals between problem and recovery from Nagios/Icinga logs
 * __nmap-xml-to-table.php__ - Script to transform multiple nmap XML output files (presumably of the same host/port range with different scan options) into a HTML table
+* __pagerduty_list_incidents.py__ - Python script to list and filter PagerDuty incidents.
 * __print-cmd.sh__ - Simple script to log environment variables and original command for forced ssh commands
 * __print-cmd-wrapper.c__ - C wrapper like cmd-wrapper.c, but just echoes back the command that was called
 * __pushover__ - script to wrap execution of a command and send [Pushover](https://pushover.net/) and ``notify-send`` notifications about its duration and exit code.
@@ -65,7 +66,7 @@ file.
 * __rebuild_srpm.sh__ - Script to rebuild a SRPM 1:1, useful when you want to build a RHEL/CentOS 6 SRPM on a RHEL/CentOS 5 system that doesn't support newer compression (cpio: MD5 sum mismatch)
 * __reviewboard_reminder_mail.py__ - ReviewBoard - Script to send reminder emails for any open reviews, targeted at a specific group, not updated in more than X days.
 * __route53_ddns_update.sh__ - Bash script to update Route53 dynamic DNS
-* __rss_to_mail_config.py__ - sample configuration file for rss_to_mail.py
+* __rss_to_mail_config.py__ - sample configuration file for rss_to_mail.py*
 * __rss_to_mail.py__ - Dead simple python script to find new entries in an RSS feed, and email listing of new entries matching a regex to you. Intended to be run via cron.
 * __rsync-wrapper.c__ - setuid/gid wrapper around rsync. Useful to allow members of a specified group to do rsync backups as root over SSH.
 * __rsyslogIsHung.php__ - script to investigate rsyslog hangs, write output, and send mail
