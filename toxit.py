@@ -11,6 +11,8 @@ Copyright 2016 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2016-10-28 Jason Antman <jason@jasonantman.com>:
+  - ignore 'env' in commands
 2016-07-05 Jason Antman <jason@jasonantman.com>:
   - gut the whole script and use tox's own parseconfig()
 2016-07-05 Jason Antman <jason@jasonantman.com>:
@@ -42,7 +44,8 @@ class ToxIt(object):
         ['python', '--version'],
         ['virtualenv', '--version'],
         ['pip', '--version'],
-        ['pip', 'freeze']
+        ['pip', 'freeze'],
+        ['env']
     ]
 
     def __init__(self):
