@@ -14,6 +14,8 @@ REQUIREMENTS:
 trello and python-dateutil distributions
 
 CHANGELOG:
+2016-12-03 Jason Antman <jason@jasonantman.com>:
+  - add -p/--position to support adding card at top or bottom of list
 2016-10-15 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -23,6 +25,7 @@ import os
 import logging
 import argparse
 from datetime import timedelta
+import requests
 
 try:
     from trello import TrelloApi
@@ -74,7 +77,7 @@ class TrelloEnsureCard:
         self.trello = TrelloApi(app_key, token)
         logger.debug('TrelloApi initialized')
 
-    def run(self, card_title, list_name, board_name, labels=[]):
+    def run(self, card_title, list_name, board_name, labels=[], pos='bottom'):
         """main entry point"""
         board_id = self.get_board_id(board_name)
         board = self.trello.boards.get(board_id, **self.board_get_kwargs)
@@ -91,10 +94,12 @@ class TrelloEnsureCard:
             if self.dry_run:
                 logger.warning("DRY RUN: would add card. dry run, so exiting")
                 return
-            desired_card = self.trello.cards.new(card_title, list_id)
+            desired_card = self.new_card(name=card_title, idList=list_id,
+                                         pos=pos)
             logger.info(
-                "Added card '%s' (%s <%s>) to list", desired_card['name'],
-                desired_card['id'], desired_card['url']
+                "Added card '%s' (%s <%s>) to list; position: %s",
+                desired_card['name'], desired_card['id'], desired_card['url'],
+                pos
             )
         else:
             logger.info("Found desired card '%s' (%s; <%s>) in list",
@@ -102,6 +107,27 @@ class TrelloEnsureCard:
                         desired_card['url'])
         if len(card_labels) > 0:
             self.ensure_card_labels(desired_card, card_labels)
+
+    def new_card(self, **kwargs):
+        """
+        Wrapper around trello.cards.new because 0.9.1 on PyPI doesn't have a
+        position argument (even though the source repo does...)
+
+        :param name: card title
+        :type name: str
+        :param idList: list ID
+        :type idList: str
+        :param desc: card description
+        :type desc: str
+        :param pos: position, "top", "bottom", or a positive number
+        """
+        c = self.trello.cards
+        resp = requests.post(
+            "https://trello.com/1/cards" % (),
+            params=dict(key=c._apikey, token=c._token),
+            data=kwargs)
+        resp.raise_for_status()
+        return resp.json()
 
     def labels_list(self, board, labels):
         """
@@ -228,11 +254,20 @@ def parse_args(argv):
     p.add_argument('-L', '--label', dest='labels', action='append', type=str,
                    help='label name or color to set on card; can specify'
                         'multiple times', default=[])
+    p.add_argument('-p', '--position', dest='pos', action='store', type=str,
+                   default='bottom',
+                   help='position in list to add the card at; "top", "bottom",'
+                   'or a positive number (default: bottom)')
     p.add_argument('CARD_TITLE', action='store', type=str,
                    help='card title to ensure')
 
     args = p.parse_args(argv)
-
+    try:
+        i = float(args.pos)
+        if '%s' % i == args.pos:
+            args.pos = i
+    except:
+        pass
     return args
 
 if __name__ == "__main__":
@@ -245,5 +280,6 @@ if __name__ == "__main__":
     script.run(args.CARD_TITLE,
                list_name=args.list_name,
                board_name=args.BOARD_NAME,
-               labels=args.labels
+               labels=args.labels,
+               pos=args.pos
     )
