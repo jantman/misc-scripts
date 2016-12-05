@@ -12,6 +12,10 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2016-12-05 Jason Antman <jason@jasonantman.com>:
+  - Performance optimization for many files: instead of reading in all files,
+    deserializing, and then searching, read in and search files one at a time.
+
 2016-08-06 Jason Antman <jason@jasonantman.com>:
   - add option to only output the API methods called in matching records
 
@@ -58,22 +62,13 @@ class QuickCloudtrail:
         elif verbose > 0:
             self.logger.setLevel(logging.INFO)
         self.logdir = logdir
-        files = [ f for f in os.listdir(logdir) if ( os.path.isfile(os.path.join(logdir, f)) and self.json_re.match(f) ) ]
-        self.logger.info("Found {c} CloudTrail log JSON files in {l}".format(c=len(files), l=logdir))
-        for f in files:
-            self.logger.debug("Parsing {f}".format(f=f))
-            with open(os.path.join(logdir, f), 'r') as fh:
-                data = json.loads(fh.read())['Records']
-                self.logger.debug("Found {c} records in {f}".format(
-                    c=len(data),
-                    f=f))
-                self.logs.extend(data)
-        self.logger.info("Parsed {c} records.".format(c=len(self.logs)))
+        self.files = [ f for f in os.listdir(logdir) if ( os.path.isfile(os.path.join(logdir, f)) and self.json_re.match(f) ) ]
+        self.logger.info("Found {c} CloudTrail log JSON files in {l}".format(c=len(self.files), l=logdir))
 
-    def search_user(self, users):
+    def search_user(self, logs, users):
         """find all logs relating to the specified IAM user name substring(s)"""
         res = []
-        for i in self.logs:
+        for i in logs:
             if 'userIdentity' not in i:
                 continue
             if 'userName' not in i['userIdentity']:
@@ -84,10 +79,10 @@ class QuickCloudtrail:
                     break
         return res
 
-    def search_accessKeyId(self, users):
+    def search_accessKeyId(self, logs, users):
         """find all logs relating to the specified Access Key ID"""
         res = []
-        for i in self.logs:
+        for i in logs:
             if 'userIdentity' not in i:
                 continue
             if 'accessKeyId' not in i['userIdentity']:
@@ -99,10 +94,10 @@ class QuickCloudtrail:
                     break
         return res
 
-    def search_request(self, req_ids):
+    def search_request(self, logs, req_ids):
         """find all logs for the specified request ID(s)"""
         res = []
-        for i in self.logs:
+        for i in logs:
             if 'requestID' not in i:
                 continue
             for rid in req_ids:
@@ -111,10 +106,10 @@ class QuickCloudtrail:
                     break
         return res
 
-    def search_source_ip(self, src_ips):
+    def search_source_ip(self, logs, src_ips):
         """find all logs for the specified source IP(s)"""
         res = []
-        for i in self.logs:
+        for i in logs:
             if 'sourceIPAddress' not in i:
                 continue
             for sip in src_ips:
@@ -123,18 +118,18 @@ class QuickCloudtrail:
                     break
         return res
 
-    def search_errors(self, args):
+    def search_errors(self, logs, args):
         """find all logs with errorCode or errorMessage; ignore query"""
         res = []
-        for i in self.logs:
+        for i in logs:
             if 'errorCode' in i or 'errorMessage' in i:
                 res.append(i)
         return res
 
-    def _search_element_substr(self, key, args):
+    def _search_element_substr(self, logs, key, args):
         """meta-func to search for any records with substrings in a key"""
         res = []
-        for i in self.logs:
+        for i in logs:
             if key not in i:
                 continue
             for a in args:
@@ -143,26 +138,26 @@ class QuickCloudtrail:
                     break
         return res
 
-    def search_errorCode(self, args):
+    def search_errorCode(self, logs, args):
         """find all logs with an errorCode containing the specified string"""
-        return self._search_element_substr('errorCode', args)
+        return self._search_element_substr(logs, 'errorCode', args)
 
-    def search_errorMessage(self, args):
+    def search_errorMessage(self, logs, args):
         """find all logs with an errorMessage containing the specified string"""
-        return self._search_element_substr('errorMessage', args)
+        return self._search_element_substr(logs, 'errorMessage', args)
 
-    def search_eventSource(self, args):
+    def search_eventSource(self, logs, args):
         """find all logs with an eventSource containing the specified string"""
-        return self._search_element_substr('eventSource', args)
+        return self._search_element_substr(logs, 'eventSource', args)
 
-    def search_eventName(self, args):
+    def search_eventName(self, logs, args):
         """find all logs with an eventName containing the specified string"""
-        return self._search_element_substr('eventName', args)
+        return self._search_element_substr(logs, 'eventName', args)
 
-    def search_string(self, args):
+    def search_string(self, logs, args):
         """find all logs with the specified string ANYWHERE in them"""
         res = []
-        for i in self.logs:
+        for i in logs:
             _repr = str(i)
             for a in args:
                 if a in _repr:
@@ -179,7 +174,23 @@ class QuickCloudtrail:
         """wrapper around search functions"""
         func_name = "search_{s}".format(s=search_type)
         fn = getattr(self, func_name)
-        res = fn(query)
+        res = []
+        num_records = 0
+        for f in sorted(self.files):
+            self.logger.debug("Parsing {f}".format(f=f))
+            with open(os.path.join(self.logdir, f), 'r') as fh:
+                data = json.loads(fh.read())['Records']
+                self.logger.debug("Found {c} records in {f}".format(
+                    c=len(data),
+                    f=f))
+            num_records += len(data)
+            searchres = fn(data, query)
+            if len(searchres) > 0:
+                self.logger.debug('Search found %d matches in %s',
+                                  len(searchres), f)
+            res.extend(searchres)
+        self.logger.info('Parsed and searched %d records in %d files',
+                         num_records, len(self.files))
         self.logger.debug("Search function {f} found {c} matches.".format(
             c=len(res),
             f=func_name))
