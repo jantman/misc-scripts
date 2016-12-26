@@ -46,6 +46,8 @@ fork and pull request.
 
 CHANGELOG
 ---------
+2016-12-26 Jason Antman <jason@jasonantman.com>:
+  - add Graphite support
 2016-08-10 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -57,6 +59,8 @@ import os
 from datetime import datetime
 import time
 from collections import defaultdict
+import socket
+import re
 
 import serial  # distribution: pyserial
 
@@ -298,6 +302,93 @@ class Logger(object):
         self.log_data([result])
 
 
+class GraphiteSender(object):
+
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        logger.info('Sending graphite data to %s:%s', host, port)
+
+    def _graphite_send(self, send_str):
+        """
+        Send data to graphite
+
+        :param send_str: data string to send
+        :type send_str: str
+        """
+        logger.debug('Opening socket connection to %s:%s', self.host, self.port)
+        sock = socket.create_connection((self.host, self.port), 10)
+        logger.debug('Sending data: "%s"', send_str)
+        sock.sendall(send_str)
+        logger.info('Data sent to Graphite')
+        sock.close()
+
+
+    def _clean_name(self, metric_name):
+        """
+        Return a graphite-safe metric name.
+
+        :param metric_name: original metric name
+        :type metric_name: str
+        :return: graphite-safe metric name
+        :rtype: str
+        """
+        metric_name = metric_name.lower()
+        newk = re.sub(r'[^A-Za-z0-9_-]', '_', metric_name)
+        if newk != metric_name:
+            logger.debug('Cleaned metric name from "%s" to "%s"',
+                         metric_name, newk)
+        return newk
+
+    def send_data(self, data):
+        """
+        Send data to Graphite.
+
+        :param data: list of data dicts
+        :type data: list
+        """
+        send_str = ''
+        for d in data:
+            ts = time.mktime(d['datetime'].timetuple())
+            for k in sorted(d.keys()):
+                if k == 'datetime':
+                    continue
+                send_str += "%s %s %d\n" % (
+                    'wattsup.%s' % self._clean_name(k),
+                    d[k],
+                    ts
+                )
+        self._graphite_send(send_str)
+
+    def send_average(self, data):
+        """
+        Send average of data to Graphite.
+
+        :param data: list of data dicts
+        :type data: list
+        """
+        avgs = defaultdict(list)
+        dt = None
+        for record in data:
+            if dt is None:
+                dt = record['datetime']
+            for key, val in record.items():
+                if key == 'datetime':
+                    continue
+                avgs[key].append(val)
+        result = {}
+        for key, values in avgs.items():
+            if key.endswith('min'):
+                result[key] = min(values)
+            elif key.endswith('max'):
+                result[key] = max(values)
+            else:
+                # mean
+                result[key] = sum(values) / float(len(values))
+        result['datetime'] = dt
+        self.send_data([result])
+
+
 def parse_args(argv):
     """
     parse arguments/options
@@ -327,6 +418,17 @@ def parse_args(argv):
                    type=int, default=2,
                    help='interval to have WattsUp log data at, in seconds '
                         '(default 1)')
+    p.add_argument('-g', '--graphite', dest='graphite', action='store_true',
+                   default=False,
+                   help='Send metrics to Graphite; use -H|--graphite-host '
+                   'and -P|--graphite-port to set host and port if other '
+                   'than 127.0.0.1:2003')
+    p.add_argument('-H', '--graphite-host', dest='graphite_host',
+                   action='store', default='127.0.0.1',
+                   help='graphite host (default: 127.0.0.1)')
+    p.add_argument('-P', '--graphite-port', dest='graphite_port',
+                   action='store', type=int, default=2003,
+                   help='graphite plaintext port (default: 2003)')
     args = p.parse_args(argv)
 
     return args
@@ -376,3 +478,9 @@ if __name__ == "__main__":
         log.log_average(data)
     else:
         log.log_data(data)
+    if args.graphite:
+        g = GraphiteSender(args.graphite_host, args.graphite_port)
+        if args.average:
+            g.send_average(data)
+        else:
+            g.send_data(data)
