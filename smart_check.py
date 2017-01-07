@@ -12,7 +12,6 @@ Requirements
 
 pySMART (`pip install pySMART`) == 0.3
 
-
 License
 --------
 
@@ -37,9 +36,12 @@ import json
 import socket
 import time
 from pySMART import DeviceList
+from pySMART.utils import smartctl_type
 from platform import node
+from subprocess import Popen, PIPE
 
-FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+FORMAT = "[%(asctime)s %(levelname)s %(filename)s:%(lineno)s - " \
+         "%(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 logger = logging.getLogger(__name__)
 
@@ -47,19 +49,22 @@ logger = logging.getLogger(__name__)
 class SmartChecker(object):
 
     def __init__(self, cache_path, blacklist=[], graphite_host=None,
-                 graphite_port=2003, graphite_prefix=None):
+                 graphite_port=2003, graphite_prefix=None,
+                 test_interval=168):
         """ init method, run at class creation """
         self._blacklist = blacklist
         if len(blacklist) > 0:
-            logger.info('Ignoring device paths or serials: %s', blacklist)
+            logger.warning('Ignoring device paths or serials: %s', blacklist)
         self._cache_path = os.path.abspath(os.path.expanduser(cache_path))
         self._cache = self._get_cache()
         self._graphite_host = graphite_host
         self._graphite_port = graphite_port
         self._graphite_prefix = graphite_prefix
+        self._test_interval = test_interval
+        self._errors = []
 
     def _get_cache(self):
-        logger.debug('Reading state cache from: %s', self._cache_path)
+        logger.info('Reading state cache from: %s', self._cache_path)
         if not os.path.exists(self._cache_path):
             logger.debug('State cache does not exist.')
             return {}
@@ -70,7 +75,7 @@ class SmartChecker(object):
         return cache
 
     def _write_cache(self):
-        logger.debug('Writing state cache to: %s', self._cache_path)
+        logger.info('Writing state cache to: %s', self._cache_path)
         with open(self._cache_path, 'w') as fh:
             fh.write(json.dumps(self._cache))
         logger.debug('State written.')
@@ -84,8 +89,10 @@ class SmartChecker(object):
             logger.info('Checking device /dev/%s (%s)' , dev.name, dev.serial)
             devinfo[dev.serial] = self._info_for_dev(dev)
             self._ensure_smart_enabled(dev)
-            self._run_test_if_needed(dev)
-            self._send_graphite(dev.name, dev.serial, devinfo[dev.serial])
+            if self._dev_needs_test(dev):
+                logger.info('Device %s needs short test', dev.name)
+                self._run_test(dev)
+            #self._send_graphite(dev.name, dev.serial, devinfo[dev.serial])
             if dev.serial not in self._cache:
                 logger.warning('Device /dev/%s (%s) not in cache from last '
                                'run of this program; storing current data in '
@@ -107,32 +114,193 @@ class SmartChecker(object):
         # finally, write cache
         self._cache = devinfo
         self._write_cache()
-        if len(diffs) == 0:
+        if len(diffs) == 0 and len(self._errors) == 0:
             logger.info('No differences found for any devices. Exiting.')
             raise SystemExit(0)
         for serial, diff in diffs.iteritems():
             print('Diff for device serial %s:' % serial)
             print("%s\n\n" % diff)
+        for e in self._errors:
+            print(e)
         raise SystemExit(1)
 
     def _ensure_smart_enabled(self, dev):
         """
-        Ensure that SMART and data collection are enabled on the disk.
+        Ensure that SMART offline data collection is enabled on the disk.
+
+        Unfortunately, pySMART does not support this...
 
         :param dev: device to query
         :type dev: pySMART.device.Device
         """
-        raise NotImplementedError()
+        cmdline = 'smartctl -d {0} -c /dev/{1}'.format(
+            smartctl_type[dev.interface], dev.name
+        )
+        logger.debug('Checking if offline data collection is enabled for %s '
+                     'with command: %s', dev.name, cmdline)
+        cmd = Popen(cmdline, shell=True,
+            stdout=PIPE, stderr=PIPE)
+        _stdout, _stderr = cmd.communicate()
+        logger.debug('command STDOUT: %s', _stdout)
+        logger.debug('command STDERR: %s', _stderr)
+        if 'Auto Offline Data Collection: Enabled' in _stdout:
+            logger.info('Offline data collection is enabled on /dev/%s',
+                        dev.name)
+            return
+        if 'Auto Offline Data Collection: Disabled' not in _stdout:
+            msg = 'Cannot determine if offline data collection is enabled ' \
+                  'or not on /dev/%s (%s)' % (dev.name, dev.serial)
+            logger.error(msg)
+            self._errors.append(msg)
+            return
+        cmdline = 'smartctl --offlineauto=on /dev/%s' % dev.name
+        logger.warning('Offline data collection is disabled on /dev/%s (%s); '
+                       'enabling now with: %s', dev.name, dev.serial, cmdline)
+        cmd = Popen(cmdline, shell=True,
+                    stdout=PIPE, stderr=PIPE)
+        _stdout, _stderr = cmd.communicate()
+        logger.debug('command STDOUT: %s', _stdout)
+        logger.debug('command STDERR: %s', _stderr)
+        if 'SMART Automatic Offline Testing Enabled' in _stdout:
+            logger.info('Automatic offline testing enabled on /dev/%s (%s)',
+                        dev.name, dev.serial)
+            return
+        msg = 'Error occurred when enabling Automatic offline testing on ' \
+              '/dev/%s (%s) with command "%s": %s%s' % (
+            dev.name, dev.serial, cmdline, _stdout, _stderr
+        )
+        logger.error(msg)
+        self._errors.append(msg)
 
-    def _run_test_if_needed(self, dev):
+    def _dev_needs_test(self, dev):
         """
-        If a self-test has not been run recently, trigger one. Wait to ensure
-        that it starts.
+        Return whether or not this device needs to have a test run.
+
+        :param dev: device to query
+        :type dev: pySMART.device.Device
+        :returns: whether or not the device needs to have a test run
+        :rtype: bool
+        """
+        if self._test_interval < 1:
+            logger.warning('Short device tests disabled; not checking if '
+                           '/dev/%s needs test', dev.name)
+            return False
+        time_since_last_test = self._dev_time_since_last_test(dev)
+        if time_since_last_test is None:
+            logger.info('Device /dev/%s (%s) has no self-test log entries',
+                        dev.name, dev.serial)
+            return True
+        logger.info('Device /dev/%s (%s) last test %d hours ago',
+                     dev.name, dev.serial, time_since_last_test)
+        if time_since_last_test <= self._test_interval:
+            logger.info('Not testing device; last test within interval')
+            return False
+        return True
+
+    def _run_test(self, dev):
+        """
+        If a self-test has not been run recently, trigger one. Wait for it to
+        show up in the device's test log.
 
         :param dev: device to query
         :type dev: pySMART.device.Device
         """
-        raise NotImplementedError()
+        if dev._test_running:
+            logger.warning('Not running short test on /dev/%s; test already '
+                           'running', dev.name)
+            return
+        last_test = self._dev_time_since_last_test(dev)
+        logger.warning('Starting short test on /dev/%s (%s)', dev.name,
+                       dev.serial)
+        res = dev.run_selftest('short')
+        if res == 0:
+            logger.info('Test started')
+        elif res == 1:
+            logger.warning('Previous test already running; test skipped')
+            return
+        elif res == 2:
+            msg = 'Could not start short test on /dev/%s; test type not ' \
+                  'supported by device' % dev.name
+            logger.error(msg)
+            self._errors.append(msg)
+            return
+        else:
+            msg = 'Could not start short test on /dev/%s; unspecified ' \
+                  'error (this may be normal on some devices)' % dev.name
+        polls = 0
+        while polls < 10:
+            dev.update()
+            if self._dev_time_since_last_test(dev) != last_test:
+                logger.info('Success - device log shows new test')
+                break
+            logger.info('Device does not have any new tests after %d polls; '
+                        'sleeping 30 seconds before polling again', polls)
+            time.sleep(30)
+            polls += 1
+        else:
+            msg = 'Device /dev/%s short test was triggered, but has not yet ' \
+                  'appeared in the device log. Something has probably gone ' \
+                  'wrong.' % dev.name
+            logger.error(msg)
+            self._errors.append(msg)
+
+    def _dev_time_since_last_test(self, dev):
+        """
+        Return the number of hours since the last self-test of the specified
+        device, or None if no test has ever been run.
+
+        Note that per the smartctl(8) man page, for ATA devices, the time in
+        self-test logs ("LifeTime(hours)") wraps at 2^16 (65,536) hours. As
+        such, for devices for which ``smartctl_type[dev.interface]`` is
+        ``ata`` or ``sat``, the test time (LifeTime(hours)") will be adjusted
+        for this wraparound based on the device's Power On Hours (Attribute 9)
+        value.
+
+        :param dev: device to query
+        :type dev: pySMART.device.Device
+        :return: time of last device test, in power-on hours
+        :rtype: int
+        """
+        try:
+            dev.tests[0].hours
+        except Exception:
+            # no test reports at all
+            return None
+        hrs = int(dev.tests[0].hours)
+        pwr_hours = self._dev_power_on_hours(dev)
+        _type = smartctl_type[dev.interface]
+        if _type not in ['ata', 'sat']:
+            # no wrap-around; just return the value
+            return pwr_hours - hrs
+        if pwr_hours < 65536:
+            return pwr_hours - hrs
+        if hrs >= pwr_hours:
+            return pwr_hours - hrs
+        multiplier = pwr_hours / 65536
+        wrap = multiplier * 65536
+        logger.info('Device /dev/%s Power On Hours appears to have wrapped '
+                    '%d time(s). Adding %d to self-test time (%d); adjusted '
+                    'last self-test time: %d', dev.name, multiplier, wrap,
+                    hrs, (pwr_hours - (hrs + wrap)))
+        hrs += wrap
+        return pwr_hours - hrs
+
+
+    def _dev_power_on_hours(self, dev):
+        """
+        Given a device, return the value of its #9 Attribute, "Power On Hours".
+
+        :param dev: device to query
+        :type dev: pySMART.device.Device
+        :return: integer number of power-on hours
+        :rtype: int
+        """
+        for a in dev.attributes:
+            if a is None:
+                continue
+            if a.num == '9':
+                return int(a.raw)
+        raise RuntimeError("Unable to find attribute 9 for /dev/%s" % dev.name)
 
     def _diff_dev(self, cached, curr):
         """
@@ -152,6 +320,7 @@ class SmartChecker(object):
         :return: human-readable diff, or None
         :rtype: :py:obj:`str` or :py:data:`None`
         """
+        return None
         raise NotImplementedError()
 
     def _send_graphite(self, name, serial, info):
@@ -167,7 +336,7 @@ class SmartChecker(object):
         :type info: dict
         """
         if self._graphite_host is None:
-            logger.debug('Graphite disabled; not sending')
+            logger.info('Graphite disabled; not sending')
             return
         prefix = self._prefix_for_device(name, serial)
         raise NotImplementedError()
@@ -200,12 +369,15 @@ class SmartChecker(object):
         logger.info('Discovering devices...')
         devices = []
         for dev in DeviceList().devices:
-            logger.debug('Discovered device: %s', dev)
+            logger.info('Discovered device: %s', dev)
             if not dev.supports_smart:
                 logger.warning('Ignoring device that does not support SMART or '
                                'does not have SMART enabled: /dev/%s', dev.name)
                 continue
-            if '/dev/%s' % dev.name in self._blacklist:
+            if (
+                '/dev/%s' % dev.name in self._blacklist or
+                dev.name in self._blacklist
+            ):
                 logger.warning('Ignoring blacklisted device: /dev/%s', dev.name)
                 continue
             if dev.serial in self._blacklist:
@@ -252,9 +424,16 @@ class SmartChecker(object):
                 'when_failed': a.when_failed,
                 'raw': a.raw
             }
-        logger.debug('Device %s (/dev/%s) info: %s', dev.serial, dev.model, d)
+            if a.num == '9':
+                # Power_On_Hours
+                if int(a.raw) >= 43800:
+                    d['attributes'][a.name]['status'] = 'EXCEEDED LIFETIME'
+                elif int(a.raw) >= 39420:
+                    d['attributes'][a.name]['status'] = '90% LIFETIME'
+                else:
+                    d['attributes'][a.name]['status'] = 'OK'
+        logger.debug('Device %s (/dev/%s) info: %s', dev.serial, dev.name, d)
         return d
-
 
 
 def parse_args(argv):
@@ -273,6 +452,12 @@ def parse_args(argv):
                    action='append', default=[],
                    help='Device path or serial to ignore; can be specified '
                         'multiple times.')
+    p.add_argument('-s', '--short-test-interval', dest='test_interval',
+                   action='store', type=int, default=168,
+                   help='Interval in power-on hours at which a "short" device '
+                        'test should be run, if not already run within this '
+                        'interval. Set to 0 to disable automatic tests. '
+                        'Default: 168 (hours; 7 days)')
     p.add_argument('-g', '--graphite-host', dest='graphite_host', type=str,
                    action='store', default=None,
                    help='Enable sending metrics to this Graphite host')
@@ -284,9 +469,10 @@ def parse_args(argv):
     p.add_argument('-P', '--graphite-prefix', dest='graphite_prefix', type=str,
                    action='store', default=default_prefix,
                    help='prefix for Graphite metrics; supports interpolation '
-                        'of the following: %HOSTNAME% -> system hostname, '
-                        '%DEV% -> device name (e.g. "sdX"), %SERIAL% -> '
-                        'device serial (default: ' + default_prefix + ')')
+                        'of the following: %%HOSTNAME%% -> system hostname, '
+                        '%%DEV%% -> device name (e.g. "sdX"), %%SERIAL%% -> '
+                        'device serial (default: ' +
+                        default_prefix.replace('%', '%%') + ')')
     args = p.parse_args(argv)
     return args
 
@@ -302,6 +488,7 @@ if __name__ == "__main__":
         args.cache_path, blacklist=args.blacklist,
         graphite_host=args.graphite_host,
         graphite_port=args.graphite_port,
-        graphite_prefix=args.graphite_prefix
+        graphite_prefix=args.graphite_prefix,
+        test_interval=args.test_interval
     )
     script.run()
