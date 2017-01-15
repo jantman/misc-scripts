@@ -39,6 +39,7 @@ from pySMART import DeviceList
 from pySMART.utils import smartctl_type
 from platform import node
 from subprocess import Popen, PIPE
+from dictdiffer import diff
 
 FORMAT = "[%(asctime)s %(levelname)s %(filename)s:%(lineno)s - " \
          "%(funcName)20s() ] %(message)s"
@@ -103,6 +104,13 @@ class SmartChecker(object):
             if diff is not None:
                 logger.warning('Detected changes in data for /dev/%s (%s)',
                                dev.name, dev.serial)
+                diffs[dev.serial] = diff
+            if len(dev.tests) < 1:
+                continue
+            if dev.tests[0].status != 'Completed without error':
+                self._errors.append('Device /dev/%s (%s) last self-test did '
+                                    'not complete without error',
+                                    dev.name, dev.serial)
         # Make sure we got all the devices
         for serial in self._cache:
             if serial not in devinfo:
@@ -119,7 +127,7 @@ class SmartChecker(object):
             raise SystemExit(0)
         for serial, diff in diffs.iteritems():
             print('Diff for device serial %s:' % serial)
-            print("%s\n\n" % diff)
+            print("%s\n" % diff)
         for e in self._errors:
             print(e)
         raise SystemExit(1)
@@ -320,8 +328,38 @@ class SmartChecker(object):
         :return: human-readable diff, or None
         :rtype: :py:obj:`str` or :py:data:`None`
         """
-        return None
-        raise NotImplementedError()
+        # remove values we don't want included in the diff
+        cached = self._prep_dict_for_diff(cached)
+        curr = self._prep_dict_for_diff(curr)
+        # do the diff
+        s = ''
+        for d in diff(cached, curr):
+            if d[0] != 'change':
+                logger.debug('Ignoring diff: %s', d)
+                continue
+            k = d[1]
+            if isinstance(k, type([])):
+                k = ' '.join(['%s' % x for x in k])
+            print(d)
+            s += "%s changed from %s to %s\n" % (k, d[2][0], d[2][1])
+        if s == '':
+            return None
+        return s
+
+    def _prep_dict_for_diff(self, d):
+        """
+        Prepare a dict to be diffed.
+
+        :param d: the dict to prepare
+        :type d: dict
+        :return: the prepped dict
+        :rtype: dict
+        """
+        d.pop('tests', None)
+        if 'attributes' in d:
+            d['attributes'].pop('Temperature_Celsius', None)
+            d['attributes'].pop('Power_On_Hours', None)
+        return d
 
     def _send_graphite(self, name, serial, info):
         """
