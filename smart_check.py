@@ -340,7 +340,6 @@ class SmartChecker(object):
             k = d[1]
             if isinstance(k, type([])):
                 k = ' '.join(['%s' % x for x in k])
-            print(d)
             s += "%s changed from %s to %s\n" % (k, d[2][0], d[2][1])
         if s == '':
             return None
