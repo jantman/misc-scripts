@@ -21,6 +21,9 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2017-02-06 Jason Antman <jason@jasonantman.com>:
+  - fix KeyError
+
 2016-09-14 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -270,7 +273,10 @@ class SMSdumper(object):
         elif 'mms_parts' in data:
             s += self.format_mms(data)
         else:
-            s += self.format_sms(data)
+            try:
+                s += self.format_sms(data)
+            except Exception:
+                pass
         s += "</p>\n"
         return s
 
@@ -291,10 +297,10 @@ class SMSdumper(object):
 
     def format_sms(self, data):
         """return formatted HTML for an MMS"""
-        sms_type = SMS_TYPES.get(
-            data['type'], 'Unknown SMS type %s' % data['type'])
+        _type = data.get('type', 'unknown')
+        sms_type = SMS_TYPES.get(_type, 'Unknown SMS type %s' % _type)
         identifier_class = 'outgoing'
-        if data['type'] == '1':
+        if _type == '1':
             identifier_class = 'incoming'
         return '<span class="identifier %s">%s %s:</span> %s' % (
             identifier_class,
