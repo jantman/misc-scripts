@@ -49,6 +49,7 @@ file.
 * __jira2trello.py__ - Python script to update a Trello board with some details from Jira.
 * __js2phpdoc.php__ - script to take comments and function prototypes from JS files and make them PHP-ish to be parsed by phpdoc
 * __kickRsyslog.php__ - script to restart rsyslog if it appears to have stopped logging
+* __lastpass2vault.py__ - Interactive script using [HVAC](https://github.com/ianunruh/hvac) and [lastpass-python](https://github.com/konomae/lastpass-python) to copy your [LastPass](https://www.lastpass.com/) saved passwords to a [HashiCorp Vault](https://www.vaultproject.io/) server.
 * __libvirt_csv.py__ - Use libvirt python bindings to print CSV lists of dom0_host,domU_name,ID,state,UUID for all qemu+kvm VMs running on libvirt hosts passed in as arguments
 * __LICENSE__ - License for these files - GPLv3 with additional provisions
 * __linode_ddns_update.sh__ - simple script to use Linode's HTTP API to update Linode DNS for a dynamic IP
