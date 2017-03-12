@@ -24,6 +24,9 @@ The latest version of this script can be found at:
 CHANGELOG
 ----------
 
+2017-03-12 Jason Antman <jason@jasonantman.com>:
+  - ignore Power_Cycle_Count, Start_Stop_Count, Load_Cycle_Count attributes
+
 2017-01-05 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -358,6 +361,9 @@ class SmartChecker(object):
         if 'attributes' in d:
             d['attributes'].pop('Temperature_Celsius', None)
             d['attributes'].pop('Power_On_Hours', None)
+            d['attributes'].pop('Power_Cycle_Count', None)
+            d['attributes'].pop('Start_Stop_Count', None)
+            d['attributes'].pop('Load_Cycle_Count', None)
         return d
 
     def _send_graphite(self, name, serial, info):
