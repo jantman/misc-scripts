@@ -108,4 +108,3 @@ file.
 * __where_is_my_pi_zero.py__ - Python script to find in-stock Raspberry Pi Zero
 * __wiki-to-deckjs.py__ - simple, awful script to change markdown-like (very restricted markup set) markup to deck.js-ready html
 * __wordpress_daily_post.php__ - Script to publish the oldest post with a given status, if no other post has been published in 24 hours. Intended to be run via cron on weekdays
-* __xfinity_usage.py__ - Python script to check your Xfinity data usage. Class can also be used from other scripts/tools.
