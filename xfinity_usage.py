@@ -19,6 +19,22 @@ Export your Xfinity username and password as ``XFINITY_USER`` and
 ``XFINITY_PASSWORD`` environment variables, respectively. See
 ``xfinity_usage.py -h`` for further information.
 
+Disclaimer
+----------
+
+I have no idea what Xfinity's terms of use for their account management website
+are, or if they claim to have an issue with automating access. They used to have
+a desktop app to check usage, backed by an API (see
+https://github.com/WTFox/comcastUsage ), but that's been discontinued. The fact
+that they force me to login with my account credentials WHEN CONNECTING FROM
+*THEIR* NETWORK, USING THE IP ADDRESS *THEY* ISSUED TO MY ACCOUNT just to check
+my usage, pretty clearly shows me that Comcast cares a lot more about extracting
+the maximum overage fees from their customers than the "quality of service" that
+they claim these bandwidth limits exist for. So... use this at your own risk,
+but it seems pretty clear (i.e. discontinuing their "bandwidth meter" desktop
+app) that Comcast wants to prevent users from having a clear idea of their
+supposed bandwidth usage.
+
 License
 -------
 
@@ -27,6 +43,9 @@ Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
+
+2017-04-17 Jason Antman <jason@jasonantman.com>:
+  - update for difference in form after "Remember Me"
 
 2017-04-16 Jason Antman <jason@jasonantman.com>:
   - initial version of script
@@ -104,12 +123,22 @@ class XfinityUsage(object):
     def do_login(self):
         logger.info('Logging in (%s)', self.browser.current_url)
         self.do_screenshot()
-        try:
-            u = self.browser.find_element_by_id('user')
-        except:
-            logger.critical('Unable to find username input box!', exc_info=True)
-            self.error_screenshot()
-            raise RuntimeError("Unable to find username input.")
+        if self.username not in self.browser.page_source:
+            try:
+                u = self.browser.find_element_by_id('user')
+                u.clear()
+                u.send_keys(self.username)
+            except:
+                logger.critical('Unable to find username input box!', exc_info=True)
+                self.do_screenshot()
+            try:
+                rem_me = self.browser.find_element_by_id('remember_me')
+                if not rem_me.is_selected():
+                    logger.debug('Clicking "Remember Me"')
+                    rem_me.click()
+            except:
+                logger.warning('Unable to find Remember Me button!',
+                               exc_info=True)
         try:
             p = self.browser.find_element_by_id('passwd')
         except:
@@ -122,19 +151,6 @@ class XfinityUsage(object):
             logger.critical('Unable to find Sign In button!', exc_info=True)
             self.error_screenshot()
             raise RuntimeError("Unable to find Sign In button.")
-        try:
-            rem_me = self.browser.find_element_by_id('remember_me')
-        except:
-            logger.critical('Unable to find Remember Me button!', exc_info=True)
-            self.error_screenshot()
-            raise RuntimeError("Unable to find Remember Me button.")
-        if not rem_me.is_selected():
-            logger.debug('Clicking "Remember Me"')
-            rem_me.click()
-        if not rem_me.is_selected():
-            logger.warning('Remember Me box not checked.')
-        u.clear()
-        u.send_keys(self.username)
         p.clear()
         p.send_keys(self.password)
         logger.debug('Clicking Sign In button')
