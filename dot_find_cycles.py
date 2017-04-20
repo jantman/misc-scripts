@@ -36,6 +36,9 @@ The canonical source of this script can always be found from:
 <http://blog.jasonantman.com/2012/03/python-script-to-find-dependency-cycles-in-graphviz-dot-files/>
 
 CHANGELOG:
+2017-04-20 Frank Kusters <frank.kusters@sioux.eu>:
+  - added support for stdin
+
 2016-09-24 Jason Antman <jason@jasonantman.com>:
   - update docs to clarify the below
 
@@ -48,38 +51,26 @@ CHANGELOG:
 
 import sys
 from os import path, access, R_OK
+import argparse
 import networkx as nx
 from networkx.drawing.nx_pydot import read_dot
 
-def usage():
-    sys.stderr.write("dot_find_cycles.py by Jason Antman <http://blog.jasonantman.com>\n")
-    sys.stderr.write("  finds cycles in dot file graphs, such as those from Puppet\n\n")
-    sys.stderr.write("USAGE: dot_find_cycles.py /path/to/file.dot\n")
-
 def main():
-
-    path = ""
-    if (len(sys.argv) > 1):
-        path = sys.argv[1]
-    else:
-        usage()
-        sys.exit(1)
-
-    try:
-        fh = open(path)
-    except IOError as e:
-        sys.stderr.write("ERROR: could not read file " + path + "\n")
-        usage()
-        sys.exit(1)
-
+    parser = argparse.ArgumentParser(description="Finds cycles in dot file graphs, such as those from Puppet. "
+            "By Jason Antman <http://blog.jasonantman.com>")
+    parser.add_argument('dotfile', metavar='DOTFILE', nargs='?', type=argparse.FileType('r'), default=sys.stdin,
+            help="the dotfile to process. Uses standard input if argument is '-' or not present")
+    args = parser.parse_args()
 
     # read in the specified file, create a networkx DiGraph
-    G = nx.DiGraph(read_dot(path))
+    G = nx.DiGraph(read_dot(args.dotfile))
 
     C = nx.simple_cycles(G)
     for i in C:
         print i
-# Run
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass  # eat CTRL+C so it won't show an exception
