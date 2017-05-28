@@ -64,6 +64,7 @@ LABELS['needs decision'] = 'fad8c7'
 LABELS['testing'] = 'bfe5bf'
 LABELS['unreleased fix'] = '0052cc'
 LABELS['Waiting For Response'] = 'fef2c0'
+LABELS['unsupported-repo'] = 'b60205'
 #####################
 # end configuration #
 #####################
