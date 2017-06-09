@@ -74,7 +74,7 @@ selenium_log.propagate = True
 class GraphiteSender(object):
 
     NUM_PER_FLUSH = 20
-    FLUSH_SLEEP_SEC = 5
+    FLUSH_SLEEP_SEC = 3
 
     def __init__(self, host, port, prefix, dry_run=False):
         self.host = host
@@ -145,13 +145,18 @@ class GraphiteSender(object):
         Flush data to Graphite
         """
         logger.debug('Flushing Graphite queue...')
-        send_str = ''
-        for tup in self._send_queue:
-            send_str += "%s %s %d\n" % (tup[0], tup[1], tup[2])
-        if send_str == '':
-            return
-        self._graphite_send(send_str)
-        self._send_queue = []
+        while len(self._send_queue) > 0:
+            send_str = ''
+            for i in range(0, self.NUM_PER_FLUSH):
+                try:
+                    tup = self._send_queue.pop(0)
+                except IndexError:
+                    break
+                send_str += "%s %s %d\n" % (tup[0], tup[1], tup[2])
+            if send_str == '':
+                return
+            self._graphite_send(send_str)
+            time.sleep(self.FLUSH_SLEEP_SEC)
 
 
 class XB3ToGraphite(object):
