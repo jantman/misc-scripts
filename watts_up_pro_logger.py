@@ -3,7 +3,8 @@
 Watts Up Pro Logger
 ===================
 
-Logs a few status messages from a Watts Up Pro USB data collector to a file.
+Logs data from a Watts Up Pro USB data collector to a file, and optionally to a
+Graphite instance.
 
 NOTE: Values will be transformed. I.e. the communication protocol returns
 watts in 1/10 W, but we log/output Watts.
