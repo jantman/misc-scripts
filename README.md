@@ -15,6 +15,7 @@ file.
 * __asg_instances.py__ - Script to list instances in an ASG and their IP addresses, given an ASG name.
 * __aws_subnet_available_ips.py__ - Print information on used and available IPs in an AWS subnet.
 * __aws-count-tag-names.py__ - Using boto3, scan all AWS resources in the current account, and produce a report detailing all of the distinct tag names and the number of resources having each one.
+* __aws_find_duplicate_sgs.py__ - Using boto3, find duplicated EC2 Security Groups (optionally limited to one VPC).
 * __bigipcookie.pl__ - Perl script to de/encode F5 BigIp persistence cookies.
 * __centos7_rpmbuild.Vagrantfile__ - __Moved to [https://github.com/jantman/rpmbuild-vagrant-boxes](https://github.com/jantman/rpmbuild-vagrant-boxes)__
 * __check_url_list.py__ - Script to check a list of URLs (passed on stdin) for response code, and for response code of the final path in a series of redirects.
