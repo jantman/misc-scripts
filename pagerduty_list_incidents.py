@@ -12,6 +12,7 @@ Requirements
 ------------
 
 ``pip install git+https://github.com/PagerDuty/pagerduty-api-python-client.git@99e3f7e665f5e43bdd4088cdf478b2cc4faaef5f``
+``pip install python-dateutil``
 
 License
 -------
@@ -21,6 +22,9 @@ Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
+
+2017-08-07 Jason Antman <jason@jasonantman.com>:
+  - add incident duration, last status change time and summary to output
 
 2016-10-18 Jason Antman <jason@jasonantman.com>:
   - initial version of script
@@ -33,6 +37,7 @@ import pypd
 import re
 import os
 import json
+from dateutil import parser
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -72,6 +77,13 @@ class PagerDutyListIncidents(object):
         logger.debug('Calling pypd.Incident.find(%s)', kwargs)
         incidents = pypd.Incident.find(**kwargs)
         logger.debug('Found %d incidents', len(incidents))
+        for i in incidents:
+            try:
+                start = parser.parse(i['created_at'])
+                end = parser.parse(i['last_status_change_at'])
+                i.duration = end - start
+            except:
+                i.duration = 'unknown'
         filtered = self.filter_incidents(incidents)
         logger.debug('Filtered down to %d incidents', len(filtered))
         self.output(filtered)
@@ -110,15 +122,18 @@ class PagerDutyListIncidents(object):
             self.output_csv(incidents)
 
     def output_csv(self, incidents):
-        print('"Created At","ID","Incident Number","Description","Urgency","Status","HTML URL","Service ID","Service Summary","Escalation Policy ID","Escalation Policy Summary"')
+        print('"Created At","ID","Incident Number","Description","Urgency","Status","Status Change At","Status Change By","Duration","HTML URL","Service ID","Service Summary","Escalation Policy ID","Escalation Policy Summary"')
         for i in incidents:
-            print('"%s","%s","%d","%s","%s","%s","%s","%s","%s","%s","%s"' % (
+            print('"%s","%s","%d","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"' % (
                 i['created_at'],
                 i['id'],
                 i['incident_number'],
                 i['description'],
                 i['urgency'],
                 i['status'],
+                i.get('last_status_change_at', 'unknown'),
+                i.get('last_status_change_by', {}).get('summary', 'unknown'),
+                duration_str(i.duration),
                 i['html_url'],
                 i['service']['id'],
                 i['service']['summary'],
@@ -131,6 +146,21 @@ class PagerDutyListIncidents(object):
         for i in incidents:
             res.append(vars(i))
         print(json.dumps(res))
+
+
+def duration_str(td):
+    s = ''
+    if td.days != 0:
+        s += '%dd' % td.days
+    sec = td.seconds
+    if sec > 3600:
+        s += '%dh' % (sec / 3600)
+        sec = sec % 3600
+    if sec > 60:
+        s += '%dm' % (sec / 60)
+        sec = sec % 60
+    s += '%ds' % sec
+    return s
 
 
 def parse_args(argv):
