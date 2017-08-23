@@ -20,6 +20,8 @@ https://github.com/jantman/misc-scripts/blob/master/watch_jenkins.py
 
 CHANGELOG:
 
+2017-08-23 jantman:
+- properly handle MultiBranch Project PR URLs
 2016-08-17 jantman:
 - environment variables for username and password
 - change get_job_name_and_build_number(url) algorithm to be a bit more naive,
@@ -136,7 +138,11 @@ def get_job_name_and_build_number(url):
     # get the path
     parsed = urlparse(url)
     # simple, naive job URL parsing
-    job = parsed.path.replace('job/', '').strip('/')
+    job = parsed.path
+    # handle Multibranch job URLs
+    if '/view/change-requests/job/' in job:
+        job = job.replace('/view/change-requests/job/', '/job/')
+    job = job.replace('job/', '').strip('/')
     return job, build_no
 
 def get_formal_build_url(jenkins_url, job_name, build_no):
