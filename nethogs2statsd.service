@@ -1,0 +1,16 @@
+# Example systemd unit file for nethogs2statsd.py
+# From: <https://github.com/jantman/misc-scripts/blob/master/nethogs2statsd.service>
+# Last updated: 2017-08-23
+
+[Unit]
+Description=nethogs2statsd
+
+[Service]
+Restart=always
+StartLimitInterval=20
+StartLimitBurst=5
+TimeoutStartSec=0
+ExecStart=/home/jantman/GIT/misc-scripts/nethogs2statsd.py
+
+[Install]
+WantedBy=multi-user.target

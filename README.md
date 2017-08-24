@@ -65,6 +65,8 @@ file.
 * __make_puppet_param_markdown.py__ - # Python script to generate MarkDown docblock fragment for all parameters of a Puppet parameterized class or define. Simple, naive regex matching. Assumes you style your manifests properly.
 * __mw2html-auth__ - Produce an HTML version (standalone backup/export) of a MediaWiki site that's behind authentication
 * __nagios_log_problem_interval.pl__ - Chart intervals between problem and recovery from Nagios/Icinga logs
+* __nethogs2statsd.py__ - Python script to push [nethogs](https://github.com/raboof/nethogs) data to [statsd](https://github.com/etsy/statsd).
+* __nethogs2statsd.service__ - Example systemd unit for the above script.
 * __nmap-xml-to-table.php__ - Script to transform multiple nmap XML output files (presumably of the same host/port range with different scan options) into a HTML table
 * __pacman_compare.py__ - Compare packages in two files containing ``pacman -Q`` output. Ignores versions.
 * __pagerduty_list_incidents.py__ - Python script to list and filter PagerDuty incidents.
