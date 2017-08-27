@@ -1,6 +1,10 @@
 # Example systemd unit file for nethogs2statsd.py
 # From: <https://github.com/jantman/misc-scripts/blob/master/nethogs2statsd.service>
 # Last updated: 2017-08-23
+#
+# IMPORTANT NOTE: libnethogs detects interfaces to monitor when it starts;
+# if you have interfaces that come up after that (i.e. wireless, VPN, etc.)
+# you should restart this service after the interface comes up.
 
 [Unit]
 Description=nethogs2statsd
@@ -10,7 +14,9 @@ Restart=always
 StartLimitInterval=20
 StartLimitBurst=5
 TimeoutStartSec=0
-ExecStart=/home/jantman/GIT/misc-scripts/nethogs2statsd.py
+ExecStart=/home/jantman/GIT/misc-scripts/nethogs2statsd.py \
+    -L /home/jantman/GIT/nethogs/src/libnethogs.so.0.8.5-37-g7093964 \
+    -d enp4s0 -f '(not src net 192.168.0 and not src net 172.17.0) or (not dst net 192.168.0 and not dst net 172.17.0)'
 
 [Install]
 WantedBy=multi-user.target
