@@ -64,6 +64,11 @@ import os
 from queue import Queue
 from collections import defaultdict
 import socket
+import re
+try:
+    from urlparse import urlparse
+except ImportError:
+    from urllib.parse import urlparse
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -160,6 +165,10 @@ def cmdline_list(str):
     return ret
 
 
+def safename(s):
+    return re.sub(r'[^0-9a-zA-Z_-]+', '_', s)
+
+
 class UpdateHandler(threading.Thread):
 
     def __init__(self, dataq, statsd_host, statsd_port, prefix):
@@ -248,6 +257,8 @@ class UpdateHandler(threading.Thread):
         :rtype: str
         """
         progname = name.decode('ascii').split(' ')[0]
+        if pid == 0:
+            return '%d.unknown' % uid
         if '/' in progname:
             progname = progname.split('/')[-1]
         try:
@@ -257,7 +268,11 @@ class UpdateHandler(threading.Thread):
             cmdline = None
         if progname == 'python':
             progname = self._progname_for_python(progname, cmdline)
-        mname = '%d.%s' % (uid, progname)
+        elif progname == 'ssh':
+            progname = self._progname_for_ssh(progname, cmdline)
+        elif progname.startswith('git-remote-'):
+            progname = self._progname_for_git_remote(progname, cmdline)
+        mname = '%d.%s' % (uid, safename(progname))
         logger.info(
             'NEW record: progname=%s pid=%s uid=%s name="%s" cmdline="%s"; '
             'metric name: "%s"', progname, pid, uid, name, cmdline, mname
@@ -265,6 +280,17 @@ class UpdateHandler(threading.Thread):
         return mname
 
     def _progname_for_python(self, progname, cmdline):
+        """
+        For Python commands, try to find the name of the script that's running.
+        If that fails, fall back to the interpreter/executable name.
+
+        :param progname: program name as seen by nethogs (process executable)
+        :type progname: str
+        :param cmdline: full process command line, from /proc/PID/cmdline
+        :type cmdline: str
+        :return: how the program should be shown in statsd
+        :rtype: str
+        """
         if len(cmdline) == 1:
             return cmdline[0].split('/')[-1]
         if cmdline[0].split('/')[-1].startswith('python'):
@@ -272,7 +298,77 @@ class UpdateHandler(threading.Thread):
         for c in cmdline:
             if c.startswith('-'):
                 continue
-            return c.split('/')[-1]
+            return 'python-' + c.split('/')[-1]
+        logger.warning('Unknown Python command; progname=%s cmdline=%s',
+                       progname, cmdline)
+        return progname
+
+    def _progname_for_ssh(self, progname, cmdline):
+        """
+        For ssh commands, try to find the program that's running through ssh
+        (i.e. git, scp, etc.) or else the host the connection is to.
+
+        :param progname: program name as seen by nethogs (process executable)
+        :type progname: str
+        :param cmdline: full process command line, from /proc/PID/cmdline
+        :type cmdline: str
+        :return: how the program should be shown in statsd
+        :rtype: str
+        """
+        if 'git-receive-pack' in cmdline:
+            for c in cmdline:
+                if '@' in c:
+                    return 'ssh_git-receive-pack_%s' % c.split('@')[-1]
+            logger.warning(
+                'Unknown SSH git-receive-pack; progname=%s cmdline=%s',
+                progname, cmdline
+            )
+            return 'ssh_git-receive-pack_unknown'
+        if 'git-upload-pack' in cmdline:
+            for c in cmdline:
+                if '@' in c:
+                    return 'ssh_git-upload-pack_%s' % c.split('@')[-1]
+            logger.warning(
+                'Unknown SSH git-upload-pack; progname=%s cmdline=%s',
+                progname, cmdline
+            )
+            return 'ssh_git-upload-pack_unknown'
+        host = 'unknown'
+        for c in cmdline[1:]:
+            if c.startswith('-'):
+                continue
+            host = c
+            break
+        if 'scp' in cmdline:
+            return 'ssh-scp_%s' % host
+        logger.warning(
+            'Unknown SSH command; progname=%s host=%s cmdline=%s',
+            progname, host, cmdline
+        )
+        return '%s_%s' % (progname, host)
+
+    def _progname_for_git_remote(self, progname, cmdline):
+        """
+        For git-remote-* helper commands (i.e. git-remote-https), try to
+        find the URI of the remote, and return its host. If that fails,
+        fall back to the original progname.
+
+        :param progname: program name as seen by nethogs (process executable)
+        :type progname: str
+        :param cmdline: full process command line, from /proc/PID/cmdline
+        :type cmdline: str
+        :return: how the program should be shown in statsd
+        :rtype: str
+        """
+        prefix = progname.replace('git-remote-', 'git-')
+        for part in reversed(cmdline):
+            try:
+                p = urlparse(part)
+                return '%s_%s' % (prefix, safename(p.netloc))
+            except Exception:
+                continue
+        logger.warning('Unknown git command; progname=%s cmdline=%s',
+                       progname, cmdline)
         return progname
 
     def _statsd_send(self, name, sent_b, recv_b):
