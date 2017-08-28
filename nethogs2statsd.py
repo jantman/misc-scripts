@@ -210,7 +210,8 @@ class UpdateHandler(threading.Thread):
             self._handle_result(*res)
             self._dataq.task_done()
 
-    def _handle_result(self, rec_id, action, name, pid, uid, sent_b, recv_b):
+    def _handle_result(self, rec_id, action, name, pid,
+                       uid, devname, sent_b, recv_b):
         """
         Handle an update (SET or REMOVE) from the libnethogs loop.
 
@@ -224,21 +225,23 @@ class UpdateHandler(threading.Thread):
         :type pid: int
         :param uid: UID that process belongs to
         :type uid: int
+        :param devname: network interface name
+        :type devname: str
         :param sent_b: bytes sent since last update
         :type sent_b: int
         :param recv_b: bytes received since last update
         :type recv_b: int
         """
         logger.debug(
-            'HANDLER: ACTION=%d %d "%s" PID=%d UID=%d sent_b=%d recv_b=%d',
-            action, rec_id, name, pid, uid, sent_b, recv_b
+            'HANDLER: ACTION=%d %d "%s" PID=%d UID=%d dev=%s sent_b=%d '
+            'recv_b=%d', action, rec_id, name, pid, uid, devname, sent_b, recv_b
         )
         cache_key = (rec_id, pid, uid)
         suffix = self._rec_cache.get(cache_key, None)
         if suffix is None:
             suffix = self._metric_suffix_for_record(name, pid, uid)
             self._rec_cache[cache_key] = suffix
-        self._statsd_send(suffix, sent_b, recv_b)
+        self._statsd_send(suffix, devname, sent_b, recv_b)
         if action == Action.REMOVE:
             self._rec_cache.pop(cache_key, None)
 
@@ -378,22 +381,25 @@ class UpdateHandler(threading.Thread):
                        progname, cmdline)
         return progname
 
-    def _statsd_send(self, name, sent_b, recv_b):
+    def _statsd_send(self, name, devname, sent_b, recv_b):
         """
         Send a result record to statsd.
 
         :param name: metric name suffix (after ``self._prefix``)
         :type name: str
+        :param devname: network device name
+        :type devname: str
         :param sent_b: bytes sent since last update
         :type sent_b: int
         :param recv_b: bytes received since last update
         :type recv_b: int
         """
+        dn = safename(devname)
         mpath = '%s%s' % (self._prefix, name)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(2.0)
-        msg = '%s.send_b:%d|c\n%s.recv_b:%d|c' % (
-            mpath, sent_b, mpath, recv_b
+        msg = '%s.%s.send_b:%d|c\n%s.%s.recv_b:%d|c' % (
+            mpath, dn, sent_b, mpath, dn, recv_b
         )
         logger.debug('statsd send: %s', msg.replace("\n", '\\n'))
         sock.sendto(msg.encode('ascii'), (self._statsd_host, self._statsd_port))
@@ -506,6 +512,7 @@ class HogWatcher(threading.Thread):
             data.contents.name,
             data.contents.pid,
             data.contents.uid,
+            data.contents.device_name.decode('ascii'),
             data.contents.sent_bytes - self._send_cache[rid],
             data.contents.recv_bytes - self._recv_cache[rid]
         ])
