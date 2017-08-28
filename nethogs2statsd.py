@@ -337,8 +337,15 @@ class UpdateHandler(threading.Thread):
         for c in cmdline[1:]:
             if c.startswith('-'):
                 continue
-            host = c
-            break
+            if '@' in c:
+                host = c.split(':')[0]
+                break
+        if host == 'unknown':
+            for c in cmdline[1:]:
+                if c.startswith('-'):
+                    continue
+                host = c
+                break
         if 'scp' in cmdline:
             return 'ssh-scp_%s' % host
         logger.warning(
