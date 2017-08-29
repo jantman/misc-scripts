@@ -51,6 +51,12 @@ CHANGELOG
 ---------
 
 2017-08-27 jantman:
+- bug fixes
+
+2017-08-28 jantman:
+- bug fixes and change statsd metric name
+
+2017-08-27 jantman:
 - initial script
 """
 
@@ -294,6 +300,9 @@ class UpdateHandler(threading.Thread):
         :return: how the program should be shown in statsd
         :rtype: str
         """
+        if cmdline is None:
+            # /proc/PID/cmdline gone by time we tried to read it
+            return progname
         if len(cmdline) == 1:
             return cmdline[0].split('/')[-1]
         if cmdline[0].split('/')[-1].startswith('python'):
@@ -626,4 +635,6 @@ if __name__ == "__main__":
     while not done:
         monitor_thread.join(0.3)
         done = not monitor_thread.is_alive()
+        if not handler_thread.is_alive():
+            lib.nethogsmonitor_breakloop()
     dataq.put(KeyboardInterrupt())
