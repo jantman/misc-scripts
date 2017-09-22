@@ -14,6 +14,7 @@ file.
 * __apache_log_verify_site_move.py__ - Python script that parses Apache HTTPD access logs, finds all unique URLs, and compares the current HTTP response code to that of another server. Useful when moving a site.
 * __asg_instances.py__ - Script to list instances in an ASG and their IP addresses, given an ASG name.
 * __aws_api_gateway_lint.py__ - Script using boto3 to attempt to identify unused or idle API Gateways.
+* __aws_limit_increases_for_service.py__ - Script using boto3 to show all Limit Increase support tickets for a specified service.
 * __aws_subnet_available_ips.py__ - Print information on used and available IPs in an AWS subnet.
 * __aws-count-tag-names.py__ - Using boto3, scan all AWS resources in the current account, and produce a report detailing all of the distinct tag names and the number of resources having each one.
 * __aws_find_duplicate_sgs.py__ - Using boto3, find duplicated EC2 Security Groups (optionally limited to one VPC).
