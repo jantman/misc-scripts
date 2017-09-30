@@ -18,6 +18,9 @@
 #
 # CHANGELOG:
 #
+# * 2017-09-29 Jason Antman <jason@jasonantman.com>
+# - switch from whatismyip.jasonantman.com to api.ipify.org
+#
 # * 2015-06-15 Jason Antman <jason@jasonantman.com>
 # - get config from env vars instead of hard-coded
 # - get OLD_WAN_IP from cli53 instead of local cache file
@@ -61,7 +64,7 @@ fi
 
 log "Running with ZONE=${ROUTE53_ZONE} RR=${ROUTE53_RR_NAME}"
 
-WAN_IP=$(wget -O - -U wget/route53_ddns_update.sh/iponly 'http://whatismyip.jasonantman.com/?format=plain&only=ip')
+WAN_IP=$(wget -q -O - --no-check-certificate https://api.ipify.org/)
 log "Found current WAN IP as ${WAN_IP}"
 
 # Get your old WAN IP
