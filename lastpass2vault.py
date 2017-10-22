@@ -12,6 +12,14 @@ Requirements
 hvac==0.2.17
 lastpass-python==0.1.1
 
+NOTE: If you want to get the "Notes" field from LastPass entries, the released
+version of lastpass-python silently discards it. You can install the "notes"
+branch of my fork (see PR #26,
+https://github.com/konomae/lastpass-python/pull/26 ) with:
+
+pip install \
+  git+https://github.com/jantman/lastpass-python.git@notes#egg=lastpass
+
 License
 -------
 
@@ -29,6 +37,9 @@ Usage
 
 CHANGELOG
 ---------
+
+2017-10-22 Jason Antman <jason@jasonantman.com>:
+  - Add support for notes field using my fork of lastpass-python (PR pending)
 
 2017-03-05 Jason Antman <jason@jasonantman.com>:
   - initial version of script
