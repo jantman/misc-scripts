@@ -281,6 +281,8 @@ class UpdateHandler(threading.Thread):
             progname = self._progname_for_ssh(progname, cmdline)
         elif progname.startswith('git-remote-'):
             progname = self._progname_for_git_remote(progname, cmdline)
+        elif progname.startswith('terraform-provider'):
+            progname = 'terraform-provider'
         mname = '%d.%s' % (uid, safename(progname))
         logger.info(
             'NEW record: progname=%s pid=%s uid=%s name="%s" cmdline="%s"; '
@@ -310,7 +312,10 @@ class UpdateHandler(threading.Thread):
         for c in cmdline:
             if c.startswith('-'):
                 continue
-            return 'python-' + c.split('/')[-1]
+            tmp = 'python-' + c.split('/')[-1]
+            if tmp.startswith('python-gmvault_bootstrap'):
+                return 'python-gmvault_bootstrap'
+            return tmp
         logger.warning('Unknown Python command; progname=%s cmdline=%s',
                        progname, cmdline)
         return progname
