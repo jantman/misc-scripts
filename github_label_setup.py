@@ -166,11 +166,6 @@ if __name__ == "__main__":
         logger.setLevel(logging.DEBUG)
     elif args.verbose > 0:
         logger.setLevel(logging.INFO)
-    try:
-        token = os.environ['GITHUB_TOKEN']
-        logger.debug("Using API token from GITHUB_TOKEN environment variable")
-    except KeyError:
-        token = get_api_token()
-        logger.debug("Using API token from git config 'github.token'")
+    token = os.environ.get('GITHUB_TOKEN', get_api_token())
     script = GitHubLabelFixer(token, args.orgname, dry_run=args.dry_run)
     script.run()
