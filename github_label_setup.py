@@ -28,6 +28,11 @@ The latest version of this script can be found at:
 CHANGELOG
 ----------
 
+2018-02-15 Jason Antman <jason@jasonantman.com>:
+  - fix bug in dryrun logic (not implemented at all)
+  - on exceptions adding label, log exception and continue
+  - add "stale" label
+
 2015-11-25 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -65,6 +70,7 @@ LABELS['testing'] = 'bfe5bf'
 LABELS['unreleased fix'] = '0052cc'
 LABELS['Waiting For Response'] = 'fef2c0'
 LABELS['unsupported-repo'] = 'b60205'
+LABELS['stale'] = 'f9d0c4'
 #####################
 # end configuration #
 #####################
@@ -97,16 +103,31 @@ class GitHubLabelFixer:
             logger.debug("%s labels: %s", repo.full_name, colors)
             for name, color in LABELS.items():
                 if name not in labels:
-                    logger.info("Adding '%s' (%s) to %s",
-                                name, color, repo.full_name)
-                    res = repo.create_label(name, color)
-                    if res is None:
+                    try:
+                        if self.dry_run:
+                            res = True
+                            print('Would add label %s (%s) to repo %s' % (
+                                name, color, repo.full_name
+                            ))
+                        else:
+                            logger.info("Adding '%s' (%s) to %s",
+                                        name, color, repo.full_name)
+                            res = repo.create_label(name, color)
+                        if res is None:
+                            logger.error("Error creating label %s on %s",
+                                         name, repo.full_name)
+                    except Exception:
                         logger.error("Error creating label %s on %s",
-                                     name, repo.full_name)
+                                     name, repo.full_name, exc_info=True)
                 elif colors[name] != color:
-                    logger.info("Updating '%s' on %s - color %s to %s",
-                                name, repo.full_name, colors[name], color)
-                    res = labels[name].update(name, color)
+                    if self.dry_run:
+                        print("Would update '%s' on %s - color %s to %s" % (
+                            name, repo.full_name, colors[name], color
+                        ))
+                    else:
+                        logger.info("Updating '%s' on %s - color %s to %s",
+                                    name, repo.full_name, colors[name], color)
+                        res = labels[name].update(name, color)
                     if not res:
                         logger.error("Error updating color")
 
