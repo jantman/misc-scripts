@@ -28,6 +28,9 @@ The latest version of this script can be found at:
 CHANGELOG
 ----------
 
+2018-02-18 Jason Antman <jason@jasonantman.com>:
+  - Fix unicode error when reading token from git config under py3.
+
 2018-02-15 Jason Antman <jason@jasonantman.com>:
   - fix bug in dryrun logic (not implemented at all)
   - on exceptions adding label, log exception and continue
@@ -155,6 +158,8 @@ def get_api_token():
     """ get GH api token """
     apikey = subprocess.check_output(['git', 'config', '--global',
                                       'github.token']).strip()
+    if isinstance(apikey, bytes):
+        apikey = apikey.decode()
     if len(apikey) != 40:
         raise SystemExit("ERROR: invalid github api token from `git config "
                          "--global github.token`: '%s'" % apikey)
@@ -166,6 +171,11 @@ if __name__ == "__main__":
         logger.setLevel(logging.DEBUG)
     elif args.verbose > 0:
         logger.setLevel(logging.INFO)
-    token = os.environ.get('GITHUB_TOKEN', get_api_token())
+    if 'GITHUB_TOKEN' in os.environ:
+        logger.debug('Using github token from GITHUB_TOKEN env var')
+        token = os.environ['GITHUB_TOKEN']
+    else:
+        logger.debug('Using github token from github.token in ~/.gitconfig')
+        token = get_api_token()
     script = GitHubLabelFixer(token, args.orgname, dry_run=args.dry_run)
     script.run()
