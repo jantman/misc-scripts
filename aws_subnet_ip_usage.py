@@ -99,9 +99,9 @@ class AWSIPUsage:
             print("WARNING: number of available IPs found does not match the "
                   "number reported by the API. Other IPs may be in used by "
                   "services not checked by this script!")
-        print('Subnet has %d IPs possible, %d IPs in use. Theoretical '
+        print('Subnet has %d usable IPs, %d IPs in use. Theoretical '
               'maximum with all ELBs and ASGs fully scaled: %d' % (
-                  len(used_ips), len(ips), len(used_ips) + elb_max + asg_max
+                  len(ips), len(used_ips), len(used_ips) + elb_max + asg_max
               )
         )
 
