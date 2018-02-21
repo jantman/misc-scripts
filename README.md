@@ -19,6 +19,7 @@ file.
 * __aws_find_duplicate_sgs.py__ - Using boto3, find duplicated EC2 Security Groups (optionally limited to one VPC).
 * __aws_limit_increases_for_service.py__ - Script using boto3 to show all Limit Increase support tickets for a specified service.
 * __aws_subnet_available_ips.py__ - Print information on used and available IPs in an AWS subnet.
+* __aws_subnet_ip_usage.py__ - Given an AWS Subnet ID or CIDR, report on the usable number of IPs, used IPs, and how many additional IPs would be taken up if all ELBs and ASGs scaled out.
 * __bigipcookie.pl__ - Perl script to de/encode F5 BigIp persistence cookies.
 * __centos7_rpmbuild.Vagrantfile__ - __Moved to [https://github.com/jantman/rpmbuild-vagrant-boxes](https://github.com/jantman/rpmbuild-vagrant-boxes)__
 * __check_url_list.py__ - Script to check a list of URLs (passed on stdin) for response code, and for response code of the final path in a series of redirects.
