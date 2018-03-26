@@ -123,12 +123,16 @@ class AWSSgSummary:
         print('')
         print('#### Network Interfaces\n')
         for i in sg['interfaces']:
+            if self.interfaces[i].get('attachment', None) is None:
+                ownerid = ''
+            else:
+                ownerid = self.interfaces[i].get(
+                    'attachment', {}
+                ).get('InstanceOwnerId', '')
             print('* %s - %s (%s)' % (
                 self.interfaces[i]['id'],
                 self.interfaces[i].get('description', ''),
-                self.interfaces[i].get(
-                    'attachment', {}
-                ).get('InstanceOwnerId', '')
+                ownerid
             ))
         print('')
 
