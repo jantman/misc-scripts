@@ -119,33 +119,43 @@ class SMSdumper(object):
         root = tree.getroot()
         smses = {}
         for sms in root.xpath('//sms'):
-            name = sms.attrib['address']
-            if ('contact_name' in sms.attrib and
-                        sms.attrib['contact_name'] != ''):
-                name = sms.attrib['contact_name']
-            if name not in smses:
-                smses[name] = {}
-            dt = datetime.fromtimestamp(float(sms.attrib['date']) / 1000.0)
-            smses[name][dt] = sms.attrib
+            try:
+                name = sms.attrib['address']
+                if ('contact_name' in sms.attrib and
+                            sms.attrib['contact_name'] != ''):
+                    name = sms.attrib['contact_name']
+                if name not in smses:
+                    smses[name] = {}
+                dt = datetime.fromtimestamp(float(sms.attrib['date']) / 1000.0)
+                smses[name][dt] = sms.attrib
+            except Exception:
+                logger.error('ERROR parsing SMS:\n%s', etree.tostring(sms))
+                raise
         # now parse MMS...
         for mms in root.xpath('//mms'):
-            name = mms.attrib['address']
-            if ('contact_name' in mms.attrib and
-                    mms.attrib['contact_name'] != ''):
-                name = mms.attrib['contact_name']
-            if name not in smses:
-                smses[name] = {}
-            dt = datetime.fromtimestamp(float(mms.attrib['date']) / 1000.0)
-            attr = {x: mms.attrib[x] for x in mms.attrib}
-            parts = self.parse_mms_parts(mms, name, float(mms.attrib['date']))
-            if len(parts) > 0:
-                attr['mms_parts'] = parts
-            addrs = []
-            for addr in mms.iter('addr'):
-                addrs.append(addr.attrib)
-            if len(addrs) > 0:
-                attr['mms_addresses'] = addrs
-            smses[name][dt] = attr
+            try:
+                name = mms.attrib['address']
+                if ('contact_name' in mms.attrib and
+                        mms.attrib['contact_name'] != ''):
+                    name = mms.attrib['contact_name']
+                if name not in smses:
+                    smses[name] = {}
+                dt = datetime.fromtimestamp(float(mms.attrib['date']) / 1000.0)
+                attr = {x: mms.attrib[x] for x in mms.attrib}
+                parts = self.parse_mms_parts(
+                    mms, name, float(mms.attrib['date'])
+                )
+                if len(parts) > 0:
+                    attr['mms_parts'] = parts
+                addrs = []
+                for addr in mms.iter('addr'):
+                    addrs.append(addr.attrib)
+                if len(addrs) > 0:
+                    attr['mms_addresses'] = addrs
+                smses[name][dt] = attr
+            except Exception:
+                logger.error('ERROR parsing SMS:\n%s', etree.tostring(sms))
+                raise
         return smses
 
     def parse_mms_parts(self, mms, name, float_ts):
