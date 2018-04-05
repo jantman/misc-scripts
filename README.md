@@ -12,6 +12,7 @@ file.
 
 * __add_team_to_github_org_repos.py__ - Python script to add a given GitHub Team to all of the specified Organization's repositories.
 * __apache_log_verify_site_move.py__ - Python script that parses Apache HTTPD access logs, finds all unique URLs, and compares the current HTTP response code to that of another server. Useful when moving a site.
+* __artifactory_support_bundle.py__ - Python script using ``requests`` to generate, list, and download JFrog Artifactory support bundles via the ReST API, from one or more instances/nodes.
 * __asg_instances.py__ - Script to list instances in an ASG and their IP addresses, given an ASG name.
 * __aws_api_gateway_lint.py__ - Script using boto3 to attempt to identify unused or idle API Gateways.
 * __aws-count-tag-names.py__ - Using boto3, scan all AWS resources in the current account, and produce a report detailing all of the distinct tag names and the number of resources having each one.
