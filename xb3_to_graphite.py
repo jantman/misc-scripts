@@ -55,6 +55,7 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.common.desired_capabilities import \
         DesiredCapabilities
+    from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support import expected_conditions as EC
 except ImportError:
@@ -163,7 +164,8 @@ class XB3ToGraphite(object):
 
     def __init__(self, modem_ip, modem_user, modem_passwd,
                  graphite_host='127.0.0.1', graphite_port=2003, dry_run=False,
-                 graphite_prefix='xb3', selenium_debug=False):
+                 graphite_prefix='xb3', selenium_debug=False,
+                 browser_name='phantomjs'):
         """
         XB3 to Graphite sender
 
@@ -183,6 +185,8 @@ class XB3ToGraphite(object):
         :type graphite_prefix: str
         :param selenium_debug: if True, screenshot every page to ./
         :type selenium_debug: bool
+        :param browser_name: name of browser to use
+        :type browser_name: str
         """
         self.graphite = GraphiteSender(
             graphite_host, graphite_port, graphite_prefix,
@@ -193,10 +197,12 @@ class XB3ToGraphite(object):
         self.user = modem_user
         self.passwd = modem_passwd
         self.selenium_debug = selenium_debug
+        self.browser_name = browser_name
 
     def run(self):
         getter = XB3StatsGetter(
-            self.modem_ip, self.user, self.passwd, self.selenium_debug
+            self.modem_ip, self.user, self.passwd, self.selenium_debug,
+            browser_name=self.browser_name
         )
         stats = getter.get_stats()
         self.graphite.send_data(stats)
@@ -207,7 +213,7 @@ class XB3StatsGetter(object):
 
     TIME_INTERVAL_RE = re.compile(r'^([0-9]+)([dhms])$')
 
-    def __init__(self, ip, user, passwd, debug=False):
+    def __init__(self, ip, user, passwd, debug=False, browser_name='phantomjs'):
         """
         :param ip: modem IP address
         :type ip: str
@@ -217,6 +223,8 @@ class XB3StatsGetter(object):
         :type passwd: str
         :param debug: if True, screenshot every page to `./`
         :type debug: bool
+        :param browser_name: name of browser to use
+        :type browser_name: str
         """
         logger.debug('Initializing XB3StatsGetter ip=%s user=%s', ip, user)
         self.ip = ip
@@ -228,7 +236,7 @@ class XB3StatsGetter(object):
         self.user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:33.0) ' \
                           'Gecko/20100101 Firefox/33.0'
         logger.debug('Getting browser instance...')
-        self.browser = self.get_browser()
+        self.browser = self.get_browser(browser_name=browser_name)
 
     def get_stats(self):
         """
@@ -602,6 +610,11 @@ class XB3StatsGetter(object):
         elif browser_name == 'chrome':
             logger.debug("getting Chrome browser (local)")
             browser = webdriver.Chrome()
+        elif browser_name == 'chrome-headless':
+            logger.debug('getting Chrome browser (local) with --headless')
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            browser = webdriver.Chrome(chrome_options=chrome_options)
         elif browser_name == 'phantomjs':
             logger.debug("getting PhantomJS browser (local)")
             dcap = dict(DesiredCapabilities.PHANTOMJS)
@@ -617,8 +630,10 @@ class XB3StatsGetter(object):
             browser.set_window_size(1024, 768)
         else:
             raise SystemExit(
-                "ERROR: browser type must be one of 'firefox', 'chrome' or "
-                "'phantomjs', not '{b}'".format(b=browser_name))
+                "ERROR: browser type must be one of 'firefox', 'chrome', "
+                "'chrome-headless' or 'phantomjs', not '{b}'".format(
+                b=browser_name
+            ))
         logger.debug("returning browser")
         return browser
 
@@ -720,6 +735,10 @@ def parse_args(argv):
                    help='Modem IP address (default: 10.0.0.1')
     p.add_argument('-S', '--screenshot', dest='screenshot', action='store_true',
                    default=False, help='screenshot every page for debugging')
+    browsers = ['firefox', 'chrome', 'chrome-headless', 'phantomjs']
+    p.add_argument('-b', '--browser-name', dest='browser_name', type=str,
+                   default='phantomjs', choices=browsers,
+                   help='browser to use; one of: %s' % browsers)
     args = p.parse_args(argv)
     return args
 
@@ -741,5 +760,6 @@ if __name__ == "__main__":
     XB3ToGraphite(
         args.modem_ip, user, passwd, dry_run=args.dry_run,
         graphite_prefix=args.prefix, graphite_host=args.graphite_host,
-        graphite_port=args.graphite_port, selenium_debug=args.screenshot
+        graphite_port=args.graphite_port, selenium_debug=args.screenshot,
+        browser_name=args.browser_name
     ).run()
