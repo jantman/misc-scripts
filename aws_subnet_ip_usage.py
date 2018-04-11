@@ -17,6 +17,8 @@ Copyright 2018 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2018-04-11 Jason Antman <jason@jasonantman.com>:
+  - print message and exit instead of throwing TypeError if no subnets found
 2018-02-21 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -60,6 +62,12 @@ class AWSIPUsage:
     def show_subnet_usage(self, query):
         """main entry point"""
         subnet = self._find_subnet(query)
+        if subnet is None:
+            logger.error(
+                'No matching subnets found! (Are you authenticated to the '
+                'right account?)'
+            )
+            raise SystemExit(1)
         print("Found matching subnet: %s (%s) %s %s (%s IPs available)" % (
                     subnet['SubnetId'],
                     subnet['CidrBlock'],
