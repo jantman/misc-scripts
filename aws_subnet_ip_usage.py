@@ -202,14 +202,13 @@ class AWSIPUsage:
                 for inst in reservation['Instances']:
                     if inst['PrivateIpAddress'] in ips:
                         res[inst['PrivateIpAddress']] = inst['InstanceId']
-                    elif inst['PublicIpAddress'] in ips:
+                    elif inst.get('PublicIpAddress',None) in ips:
                         res[inst['PublicIpAddress']] = inst['InstanceId']
                     else:
                         for ni in inst['NetworkInterfaces']:
                             if ni['PrivateIpAddress'] in ips:
                                 res[inst['PrivateIpAddress']] = inst[
-                                    'InstanceId'] + '/' + inst[
-                                        'NetworkInterfaceId']
+                                    'InstanceId'] + '/' + inst.get('NetworkInterfaceId','0')
         # by subnet-id
         resp = paginator.paginate(
             Filters=[{
@@ -222,14 +221,13 @@ class AWSIPUsage:
                 for inst in reservation['Instances']:
                     if inst['PrivateIpAddress'] in ips:
                         res[inst['PrivateIpAddress']] = inst['InstanceId']
-                    elif inst['PublicIpAddress'] in ips:
+                    elif inst.get('PublicIpAddress',None) in ips:
                         res[inst['PublicIpAddress']] = inst['InstanceId']
                     else:
                         for ni in inst['NetworkInterfaces']:
                             if ni['PrivateIpAddress'] in ips:
                                 res[inst['PrivateIpAddress']] = inst[
-                                    'InstanceId'] + '/' + inst[
-                                        'NetworkInterfaceId']
+                                    'InstanceId'] + '/' + inst.get('NetworkInterfaceId','0')
         return res
 
     def _ips_for_subnet(self, cidr):
