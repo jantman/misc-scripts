@@ -17,6 +17,9 @@ Copyright 2018 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2018-04-15 Marcellus Easley <marcellus.easley@gmail.com>:
+  - cleanly handle missing PublicIpAddress and NetworkInterfaceId keys in EC2
+    instances response.
 2018-04-11 Jason Antman <jason@jasonantman.com>:
   - print message and exit instead of throwing TypeError if no subnets found
 2018-02-21 Jason Antman <jason@jasonantman.com>:
