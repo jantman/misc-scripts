@@ -25,6 +25,10 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2018-05-12 Jason Antman <jason@jasonantman.com>:
+  - bugfix to handle creation of nested labels. Previously, script would crash
+    if a new nested label was created, and the label it was nested under was
+    also new.
 2016-12-01 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -99,7 +103,7 @@ class GMVaultLabelLinker(object):
         lbldir = os.path.join(self.out_dir, label)
         if not os.path.exists(lbldir):
             logger.debug('Creating: %s', lbldir)
-            os.mkdir(lbldir)
+            os.makedirs(lbldir)
         c = 0
         for msg in msg_tups:
             monthdir, thr_id, gm_id = msg
