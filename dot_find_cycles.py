@@ -36,6 +36,9 @@ The canonical source of this script can always be found from:
 <http://blog.jasonantman.com/2012/03/python-script-to-find-dependency-cycles-in-graphviz-dot-files/>
 
 CHANGELOG:
+2018-05-23 Nikolaus Wittenstein <nikolaus.wittenstein@gmail.com>:
+  - add Python 3 support
+
 2017-04-20 Frank Kusters <frank.kusters@sioux.eu>:
   - added support for stdin
   - add option for only showing shortest cycles
@@ -74,7 +77,7 @@ def main():
     if args.only_shortest:
         C = remove_super_cycles(C)
     for i in C:
-        print i
+        print(i)
 
 
 def remove_super_cycles(cycle_list):
