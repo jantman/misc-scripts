@@ -18,6 +18,9 @@
 #
 # CHANGELOG:
 #
+# * 2018-06-13 Jason Antman <jason@jasonantman.com>
+# - update for new Go-based cli53
+#
 # * 2017-09-29 Jason Antman <jason@jasonantman.com>
 # - switch from whatismyip.jasonantman.com to api.ipify.org
 #
@@ -68,7 +71,7 @@ WAN_IP=$(wget -q -O - --no-check-certificate https://api.ipify.org/)
 log "Found current WAN IP as ${WAN_IP}"
 
 # Get your old WAN IP
-OLD_WAN_IP=$(cli53 rrlist $ROUTE53_ZONE | grep "^${ROUTE53_RR_NAME}[[:space:]]" | awk '{print $5}')
+OLD_WAN_IP=$(cli53 export $ROUTE53_ZONE | grep "^${ROUTE53_RR_NAME}[[:space:]]" | awk '{print $5}')
 log "Found old WAN IP as ${OLD_WAN_IP}"
 
 # See if the new IP is the same as the old IP.
@@ -81,5 +84,5 @@ else
     log "Deleting current A record"
     set -o pipefail
     cli53 rrdelete $ROUTE53_ZONE $ROUTE53_RR_NAME A 2>&1 | logger -p local7.info -t "${LOG_TAG}-rrdelete" || logger -p local7.notice -t $LOG_TAG "cli53 rrdelete FAILED."
-    cli53 rrcreate $ROUTE53_ZONE $ROUTE53_RR_NAME A $WAN_IP --ttl 60 2>&1 | logger -p local7.info -t "${LOG_TAG}-rrcreate" && echo $WAN_IP > /var/CURRENT_WAN_IP.txt || logger -p local7.notice -t $LOG_TAG "cli53 rrcreate FAILED."
+    cli53 rrcreate $ROUTE53_ZONE "$ROUTE53_RR_NAME 60 A $WAN_IP" 2>&1 | logger -p local7.info -t "${LOG_TAG}-rrcreate" && echo $WAN_IP > /var/CURRENT_WAN_IP.txt || logger -p local7.notice -t $LOG_TAG "cli53 rrcreate FAILED."
 fi
