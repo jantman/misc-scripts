@@ -18,6 +18,10 @@
 #
 # CHANGELOG:
 #
+# * 2018-06-27 Jason Antman <jason@jasonantman.com>
+# - validate that new WAN_IP is not empty and looks like an IP address
+# - cli53 replace instead of delete and create
+#
 # * 2018-06-13 Jason Antman <jason@jasonantman.com>
 # - update for new Go-based cli53
 #
@@ -67,7 +71,16 @@ fi
 
 log "Running with ZONE=${ROUTE53_ZONE} RR=${ROUTE53_RR_NAME}"
 
-WAN_IP=$(wget -q -O - --no-check-certificate https://api.ipify.org/)
+# get WAN IP and trim whitespace
+WAN_IP=$(wget -q -O - --no-check-certificate https://api.ipify.org/ | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+if [[ -z "$WAN_IP" ]]; then
+  log_err "ERROR - WAN IP from https://api.ipify.org/ is empty! Failing."
+  exit 1
+fi
+if [[ ! "$WAN_IP" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+  log_err "ERROR - WAN IP from https://api.ipify.org/ does not look like an IP address: $WAN_IP"
+  exit 1
+fi
 log "Found current WAN IP as ${WAN_IP}"
 
 # Get your old WAN IP
@@ -83,6 +96,5 @@ else
     # The IP changed
     log "Deleting current A record"
     set -o pipefail
-    cli53 rrdelete $ROUTE53_ZONE $ROUTE53_RR_NAME A 2>&1 | logger -p local7.info -t "${LOG_TAG}-rrdelete" || logger -p local7.notice -t $LOG_TAG "cli53 rrdelete FAILED."
-    cli53 rrcreate $ROUTE53_ZONE "$ROUTE53_RR_NAME 60 A $WAN_IP" 2>&1 | logger -p local7.info -t "${LOG_TAG}-rrcreate" && echo $WAN_IP > /var/CURRENT_WAN_IP.txt || logger -p local7.notice -t $LOG_TAG "cli53 rrcreate FAILED."
+    cli53 rrcreate --replace $ROUTE53_ZONE "$ROUTE53_RR_NAME 60 A $WAN_IP" 2>&1 | logger -p local7.info -t "${LOG_TAG}-rrcreate" && echo $WAN_IP > /var/CURRENT_WAN_IP.txt || logger -p local7.notice -t $LOG_TAG "cli53 rrcreate FAILED."
 fi
