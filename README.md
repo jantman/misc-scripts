@@ -32,7 +32,7 @@ file.
 * __dashsnap.py__ - script to snapshot a graphite dashboard at specified intervals in the past (i.e. the last 2,4,6 hours) or a single specified time range. Snapshots both PNG images and raw JSON data, builds directory with HTML files.
 * __disqus_backup.py__ - script to backup all Disqus comments for a site.
 * __dot_find_cycles.py__ - uses Pydot and NetworkX to find cycles in a dot file directed graph (i.e. the graph output of Puppet)
-* __dumpFirefoxSession.php__ - Script to dump all URLs from a Firefox3 sessionstore.js file as text or HTML
+* __dump_firefox_session.py__ - Script to dump all URLs from a Firefox3 sessionstore.js or modern Firefox sessionstore.jsonlz4.
 * __dumpMysqlGrants.sh__ - Script to dump all grants from a MySQL server, for input into another.
 * __dump_skype_logs.py__ - Script to dump all Skype logs from a main.db file to HTML
 * __dump_sphinx_objects_inventory.py__ - Process URL for intersphinx targets and emit html or text.
