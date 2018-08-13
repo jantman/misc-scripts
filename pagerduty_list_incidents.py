@@ -11,8 +11,8 @@ If you have ideas for improvements, or want the latest version, it's at:
 Requirements
 ------------
 
-``pip install git+https://github.com/PagerDuty/pagerduty-api-python-client.git@99e3f7e665f5e43bdd4088cdf478b2cc4faaef5f``
-``pip install python-dateutil``
+* pypd >= 1.1.0 - ``pip install pypd``
+* python-dateutil - ``pip install python-dateutil``
 
 License
 -------
@@ -22,6 +22,10 @@ Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
+
+2018-08-13 Jason Antman <jason@jasonantman.com>:
+  - switch from pypd 0.0.1 to pypd 1.1.0
+  - add support for date_range=all argument
 
 2017-08-07 Jason Antman <jason@jasonantman.com>:
   - add incident duration, last status change time and summary to output
@@ -65,9 +69,11 @@ class PagerDutyListIncidents(object):
         self.detail_re = detail_re
         self.output_type = output_type
 
-    def run(self, since=None, until=None, service_ids=[]):
+    def run(self, since=None, until=None, date_range=None, service_ids=[]):
         """ do stuff here """
         kwargs = {'fetch_all': True}
+        if date_range is not None:
+            kwargs['date_range'] = date_range
         if since is not None:
             kwargs['since'] = since
         if until is not None:
@@ -167,16 +173,24 @@ def parse_args(argv):
     """
     parse arguments/options
     """
-    p = argparse.ArgumentParser(description='List and filter PagerDuty Incidents.')
+    p = argparse.ArgumentParser(
+        description='List and filter PagerDuty Incidents.'
+    )
     p.add_argument('-a', '--api-key', dest='api_key', action='store', type=str,
                    help='PagerDuty API key; if not specified, will be read '
                    'from PAGERDUTY_API_KEY environment variable', default=None)
     p.add_argument('-s', '--since', dest='since', action='store', type=str,
                    default=None, help='filter incidents since this time; '
-                   'string in the form YYYY-MM-DDTHH:MM:SSZ')
+                   'string in the form YYYY-MM-DDTHH:MM:SSZ (if since and until'
+                   ' are not specified, defaults to last 30 days)')
     p.add_argument('-u', '--until', dest='until', action='store', type=str,
                    default=None, help='filter incidents until this time; '
-                   'string in the form YYYY-MM-DDTHH:MM:SSZ')
+                   'string in the form YYYY-MM-DDTHH:MM:SSZ (if since and until'
+                   ' are not specified, defaults to last 30 days)')
+    p.add_argument('-A', '--all-dates', action='store_true', default=False,
+                   dest='date_range_all'
+                   help='Specify ALL DATA (date_range=all), overriding since '
+                   'and until parameters')
     p.add_argument('-S', '--service-id', dest='service_ids', action='append',
                    default=[], help='one or more PagerDuty Service IDs to '
                    'limit search to')
@@ -198,6 +212,14 @@ def parse_args(argv):
             raise Exception("Please either set PAGERDUTY_API_KEY environment "
                             "variable or specify -a/--api-key option.")
         args.api_key = os.environ['PAGERDUTY_API_KEY']
+    if (
+        args.date_range_all is True and
+        (args.since is not None or args.until is not None)
+    ):
+        raise RuntimeError(
+            'ERROR: -A/--all-dates is mutually exclusive with '
+            '-s/--since and -u/--until'
+        )
     return args
 
 def set_log_info():
@@ -243,8 +265,12 @@ if __name__ == "__main__":
         detail_re=args.detail_re,
         output_type=args.output_type
     )
+    drange = None
+    if args.date_range_all:
+        drange = 'all'
     script.run(
         since=args.since,
         until=args.until,
-        service_ids=args.service_ids
+        service_ids=args.service_ids,
+        date_range=drange
     )
