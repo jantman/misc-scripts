@@ -188,7 +188,7 @@ def parse_args(argv):
                    'string in the form YYYY-MM-DDTHH:MM:SSZ (if since and until'
                    ' are not specified, defaults to last 30 days)')
     p.add_argument('-A', '--all-dates', action='store_true', default=False,
-                   dest='date_range_all'
+                   dest='date_range_all',
                    help='Specify ALL DATA (date_range=all), overriding since '
                    'and until parameters')
     p.add_argument('-S', '--service-id', dest='service_ids', action='append',
