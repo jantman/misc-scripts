@@ -19,6 +19,7 @@ file.
 * __aws_creds_report_csv_filter.py__ - Filter the AWS IAM Credentials Report (CSV) by credential age and/or last used time.
 * __aws_find_duplicate_sgs.py__ - Using boto3, find duplicated EC2 Security Groups (optionally limited to one VPC).
 * __aws_limit_increases_for_service.py__ - Script using boto3 to show all Limit Increase support tickets for a specified service.
+* __aws_region_stats.py__ - Python script to print a table with some statistics from each AWS region. Stats include number of RDS instances, EC2 instances, volumes, snapshots, VPCs, and AMIs, ECS clusters, ELBs and ASGs.
 * __aws_sg_summary.py__ - Print a summary of all SGs in the current account/region, their rules, and what's in them.
 * __aws_subnet_available_ips.py__ - Print information on used and available IPs in an AWS subnet.
 * __aws_subnet_ip_usage.py__ - Given an AWS Subnet ID or CIDR, report on the usable number of IPs, used IPs, and how many additional IPs would be taken up if all ELBs and ASGs scaled out.
