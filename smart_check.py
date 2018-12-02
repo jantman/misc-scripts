@@ -112,8 +112,8 @@ class SmartChecker(object):
                 continue
             if dev.tests[0].status != 'Completed without error':
                 self._errors.append('Device /dev/%s (%s) last self-test did '
-                                    'not complete without error',
-                                    dev.name, dev.serial)
+                                    'not complete without error' % (
+                                    dev.name, dev.serial))
         # Make sure we got all the devices
         for serial in self._cache:
             if serial not in devinfo:
