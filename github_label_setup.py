@@ -14,7 +14,7 @@ repos, or your org's. Makes it so. Has a dry-run mode.
 Requirements
 -------------
 
-github3.py (`pip install --pre github3.py`) >= github3.py-1.0.0a2
+github3.py (`pip install github3.py`) >= 1.2.0
 
 License
 --------
@@ -27,6 +27,9 @@ The latest version of this script can be found at:
 
 CHANGELOG
 ----------
+
+2018-12-02 Jason Antman <jason@jasonantman.com>:
+  - Fix bug in handling of Archived repositories.
 
 2018-02-18 Jason Antman <jason@jasonantman.com>:
   - Fix unicode error when reading token from git config under py3.
@@ -95,6 +98,9 @@ class GitHubLabelFixer:
     def run(self):
         """iterate your repos and fix the labels"""
         for repo in self.gh.repositories():
+            if repo.archived:
+                logger.debug('Skipping archived repo: %s', repo.full_name)
+                continue
             labels = {}
             colors = {}
             if repo.owner.login != self.orgname:
