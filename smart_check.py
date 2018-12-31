@@ -24,6 +24,10 @@ The latest version of this script can be found at:
 CHANGELOG
 ----------
 
+2018-12-31 Jason Antman <jason@jasonantman.com>:
+  - add support for overriding or supplementing list of ignored attributes via
+    -i and -I command-line arguments
+
 2017-03-12 Jason Antman <jason@jasonantman.com>:
   - ignore Power_Cycle_Count, Start_Stop_Count, Load_Cycle_Count attributes
 
@@ -49,12 +53,20 @@ FORMAT = "[%(asctime)s %(levelname)s %(filename)s:%(lineno)s - " \
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
 logger = logging.getLogger(__name__)
 
+IGNORE_ATTRS = [
+    'Temperature_Celsius',
+    'Power_On_Hours',
+    'Power_Cycle_Count',
+    'Start_Stop_Count',
+    'Load_Cycle_Count'
+]
+
 
 class SmartChecker(object):
 
     def __init__(self, cache_path, blacklist=[], graphite_host=None,
                  graphite_port=2003, graphite_prefix=None,
-                 test_interval=168):
+                 test_interval=168, ignore_attrs=IGNORE_ATTRS):
         """ init method, run at class creation """
         self._blacklist = blacklist
         if len(blacklist) > 0:
@@ -65,6 +77,8 @@ class SmartChecker(object):
         self._graphite_port = graphite_port
         self._graphite_prefix = graphite_prefix
         self._test_interval = test_interval
+        self._ignore_attrs = ignore_attrs
+        logger.info('Ignoring SMART Attributes: %s', ignore_attrs)
         self._errors = []
 
     def _get_cache(self):
@@ -296,7 +310,6 @@ class SmartChecker(object):
         hrs += wrap
         return pwr_hours - hrs
 
-
     def _dev_power_on_hours(self, dev):
         """
         Given a device, return the value of its #9 Attribute, "Power On Hours".
@@ -359,11 +372,8 @@ class SmartChecker(object):
         """
         d.pop('tests', None)
         if 'attributes' in d:
-            d['attributes'].pop('Temperature_Celsius', None)
-            d['attributes'].pop('Power_On_Hours', None)
-            d['attributes'].pop('Power_Cycle_Count', None)
-            d['attributes'].pop('Start_Stop_Count', None)
-            d['attributes'].pop('Load_Cycle_Count', None)
+            for attr in self._ignore_attrs:
+                d['attributes'].pop(attr, None)
         return d
 
     def _send_graphite(self, name, serial, info):
@@ -495,6 +505,18 @@ def parse_args(argv):
                    action='append', default=[],
                    help='Device path or serial to ignore; can be specified '
                         'multiple times.')
+    p.add_argument('-i', '--also-ignore', dest='also_ignore', type=str,
+                   action='append', default=[],
+                   help='Attribute name(s) to ignore in addition to the default'
+                        '(%s). Can be specified multiple times. This option is'
+                        'overridden by the use of -I/--ignore-attrs'
+                        '' % IGNORE_ATTRS)
+    p.add_argument('-I', '--ignore-attrs', dest='ignore_attrs', type=str,
+                   action='append', default=[],
+                   help='Attribute name(s) to ignore. Can be specified multiple'
+                        ' times. If this option is specified, it overrides both'
+                        ' the -i/--also-ignore option and the default list of '
+                        'attributes to ignore (%s).' % IGNORE_ATTRS)
     p.add_argument('-s', '--short-test-interval', dest='test_interval',
                    action='store', type=int, default=168,
                    help='Interval in power-on hours at which a "short" device '
@@ -517,6 +539,9 @@ def parse_args(argv):
                         'device serial (default: ' +
                         default_prefix.replace('%', '%%') + ')')
     args = p.parse_args(argv)
+    if args.ignore_attrs == []:
+        args.ignore_attrs = IGNORE_ATTRS
+        args.ignore_attrs.extend(args.also_ignore)
     return args
 
 
@@ -532,6 +557,7 @@ if __name__ == "__main__":
         graphite_host=args.graphite_host,
         graphite_port=args.graphite_port,
         graphite_prefix=args.graphite_prefix,
-        test_interval=args.test_interval
+        test_interval=args.test_interval,
+        ignore_attrs=args.ignore_attrs
     )
     script.run()
