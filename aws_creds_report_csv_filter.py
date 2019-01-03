@@ -4,13 +4,32 @@ Script to iterate over an AWS IAM Credentials Report CSV file, and output
 a similar file containing only entries with a credential older than the
 --older-than-days option and/or last used more than --last-used-days ago.
 
-Requirements:
+Requirements
+------------
 
 * Python >= 3.2
 * ``python-dateutil`` package
 * ``humanize`` package
 
+License
+--------
+
+Copyright 2017-2019 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Free for any use provided that patches are submitted back to me.
+
+The latest version of this script can be found at:
+<https://github.com/jantman/misc-scripts/blob/master/aws_creds_report_csv_filter.py>
+
+CHANGELOG
+----------
+
+2019-01-03 Jason Antman <jason@jasonantman.com>:
+  - add support for filtering for credentials used LESS than N days ago
+
+2017-12-11 Jason Antman <jason@jasonantman.com>:
+  - initial version of script
 """
+
 import sys
 import os
 import csv
@@ -47,16 +66,19 @@ class AwsCredsReportFilter(object):
             return None
         return naturaltime(self.now - dt)
 
-    def run(self, older_than=None, last_used=None, summary=False):
+    def run(self, older_than=None, last_used=None, summary=False,
+            last_used_less_than=None):
         if older_than is not None:
             older_than = self.now - timedelta(days=older_than)
         if last_used is not None:
             last_used = self.now - timedelta(days=last_used)
+        if last_used_less_than is not None:
+            last_used_less_than = self.now - timedelta(days=last_used_less_than)
         results = []
         with open(self._csv_path, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                dt_min_created, dt_min_used = self._min_dates_for_row(row)
+                dt_min_created, dt_min_used, dt_max = self._dates_for_row(row)
                 if older_than is not None:
                     if (
                         dt_min_created is not None and
@@ -72,6 +94,14 @@ class AwsCredsReportFilter(object):
                     ):
                         continue
                     if dt_min_used is None:
+                        continue
+                if last_used_less_than is not None:
+                    if (
+                        dt_max is not None and
+                        dt_max < last_used_less_than
+                    ):
+                        continue
+                    if dt_max is None:
                         continue
                 results.append(row)
         if not summary:
@@ -119,9 +149,10 @@ class AwsCredsReportFilter(object):
                     row['cert_%d_last_rotated' % cert_num]
                 ))
 
-    def _min_dates_for_row(self, row):
+    def _dates_for_row(self, row):
         min_create = None
         min_used = None
+        max_used = None
         creation_fields = [
             'password_last_changed',
             'cert_1_last_rotated',
@@ -150,7 +181,11 @@ class AwsCredsReportFilter(object):
                 min_used = f_dt
             elif f_dt < min_used:
                 min_used = f_dt
-        return min_create, min_used
+            if max_used is None:
+                max_used = f_dt
+            elif f_dt > max_used:
+                max_used = f_dt
+        return min_create, min_used, max_used
 
 
 def dt_for_field(f):
@@ -172,6 +207,10 @@ if __name__ == "__main__":
                    action='store', default=None,
                    help='filter to users with password or creds last used '
                         'more than this number of days ago')
+    p.add_argument('--last-used-less-than-days', '-L', dest='last_used_less_than',
+                   type=int, action='store', default=None,
+                   help='filter to users with password or creds last used '
+                        'LESS than this number of days ago')
     p.add_argument('--summary', '-s', dest='summary', action='store_true',
                    default=False,
                    help='instead of outputting CSV, output a per-user summary')
@@ -179,5 +218,5 @@ if __name__ == "__main__":
     args = p.parse_args(sys.argv[1:])
     AwsCredsReportFilter(args.CSV_PATH).run(
         older_than=args.older_than_days, last_used=args.last_used_days,
-        summary=args.summary
+        summary=args.summary, last_used_less_than=args.last_used_less_than
     )
