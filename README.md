@@ -17,6 +17,7 @@ file.
 * __aws_api_gateway_lint.py__ - Script using boto3 to attempt to identify unused or idle API Gateways.
 * __aws-count-tag-names.py__ - Using boto3, scan all AWS resources in the current account, and produce a report detailing all of the distinct tag names and the number of resources having each one.
 * __aws_creds_report_csv_filter.py__ - Filter the AWS IAM Credentials Report (CSV) by credential age and/or last used time.
+* __aws_delete_user.py__ - Python/boto3 script to delete an IAM user including all of its associated resources, with optional dry-run.
 * __aws_find_duplicate_sgs.py__ - Using boto3, find duplicated EC2 Security Groups (optionally limited to one VPC).
 * __aws_limit_increases_for_service.py__ - Script using boto3 to show all Limit Increase support tickets for a specified service.
 * __aws_region_stats.py__ - Python script to print a table with some statistics from each AWS region. Stats include number of RDS instances, EC2 instances, volumes, snapshots, VPCs, and AMIs, ECS clusters, ELBs and ASGs.
