@@ -14,6 +14,8 @@ REQUIREMENTS:
 trello and python-dateutil distributions
 
 CHANGELOG:
+2019-01-05 Jason Antman <jason@jasonantman.com>:
+  - add -d/--description to support adding description on new cards (only)
 2016-12-03 Jason Antman <jason@jasonantman.com>:
   - add -p/--position to support adding card at top or bottom of list
 2016-10-15 Jason Antman <jason@jasonantman.com>:
@@ -77,7 +79,8 @@ class TrelloEnsureCard:
         self.trello = TrelloApi(app_key, token)
         logger.debug('TrelloApi initialized')
 
-    def run(self, card_title, list_name, board_name, labels=[], pos='bottom'):
+    def run(self, card_title, list_name, board_name, labels=[], pos='bottom',
+            desc=None):
         """main entry point"""
         board_id = self.get_board_id(board_name)
         board = self.trello.boards.get(board_id, **self.board_get_kwargs)
@@ -95,7 +98,7 @@ class TrelloEnsureCard:
                 logger.warning("DRY RUN: would add card. dry run, so exiting")
                 return
             desired_card = self.new_card(name=card_title, idList=list_id,
-                                         pos=pos)
+                                         pos=pos, desc=desc)
             logger.info(
                 "Added card '%s' (%s <%s>) to list; position: %s",
                 desired_card['name'], desired_card['id'], desired_card['url'],
@@ -120,6 +123,9 @@ class TrelloEnsureCard:
         :param desc: card description
         :type desc: str
         :param pos: position, "top", "bottom", or a positive number
+        :type pos: ``int`` or ``str``
+        :param desc: card description
+        :type desc: str
         """
         c = self.trello.cards
         resp = requests.post(
@@ -258,6 +264,8 @@ def parse_args(argv):
                    default='bottom',
                    help='position in list to add the card at; "top", "bottom",'
                    'or a positive number (default: bottom)')
+    p.add_argument('-d', '--description', dest='desc', action='store', type=str,
+                   default=None, help='card description')
     p.add_argument('CARD_TITLE', action='store', type=str,
                    help='card title to ensure')
 
@@ -281,5 +289,6 @@ if __name__ == "__main__":
                list_name=args.list_name,
                board_name=args.BOARD_NAME,
                labels=args.labels,
-               pos=args.pos
+               pos=args.pos,
+               desc=args.desc
     )
