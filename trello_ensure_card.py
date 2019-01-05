@@ -270,6 +270,8 @@ def parse_args(argv):
                    help='card title to ensure')
 
     args = p.parse_args(argv)
+    if args.desc is not None:
+        args.desc = args.desc.replace('\\n', "\n")
     try:
         i = float(args.pos)
         if '%s' % i == args.pos:
