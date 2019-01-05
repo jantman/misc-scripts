@@ -15,7 +15,7 @@ trello and python-dateutil distributions
 
 CHANGELOG:
 2019-01-05 Jason Antman <jason@jasonantman.com>:
-  - add -d/--description to support adding description on new cards (only)
+  - add -D/--description to support adding description on new cards (only)
 2016-12-03 Jason Antman <jason@jasonantman.com>:
   - add -p/--position to support adding card at top or bottom of list
 2016-10-15 Jason Antman <jason@jasonantman.com>:
@@ -264,7 +264,7 @@ def parse_args(argv):
                    default='bottom',
                    help='position in list to add the card at; "top", "bottom",'
                    'or a positive number (default: bottom)')
-    p.add_argument('-d', '--description', dest='desc', action='store', type=str,
+    p.add_argument('-D', '--description', dest='desc', action='store', type=str,
                    default=None, help='card description')
     p.add_argument('CARD_TITLE', action='store', type=str,
                    help='card title to ensure')
