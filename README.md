@@ -40,6 +40,7 @@ file.
 * __dumpMysqlGrants.sh__ - Script to dump all grants from a MySQL server, for input into another.
 * __dump_skype_logs.py__ - Script to dump all Skype logs from a main.db file to HTML
 * __dump_sphinx_objects_inventory.py__ - Process URL for intersphinx targets and emit html or text.
+* __dynamodb_to_csv.py__ - Python/boto3 script to dump all data in a DynamoDB table to CSV.
 * __ec2-list-all-tags.py__ - Using boto3, list all distinct tag names on all EC2 instances in all regions.
 * __find_outdated_puppets.py__ - Script to look at a Puppet Dashboard unhidden-nodes.csv and extract the latest report time for each node, optionally, list nodes with runtime BEFORE a string.
 * __find_test_order_problems.py__ - Script to run tests multiple times and analyze JUnit results XML, to find tests with order-dependent failures.
