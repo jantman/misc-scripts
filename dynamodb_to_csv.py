@@ -3,7 +3,7 @@
 dynamodb_to_csv.py
 ==================
 
-Python3 / boto3 script to dump all data in a DynamoDB table to CSV.
+Python3 / boto3 script to dump all data in a DynamoDB table to CSV (or JSON).
 
 Requirements
 ------------
@@ -25,11 +25,17 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2019-03-03 Jason Antman <jason@jasonantman.com>:
+  - ability to output to JSON instead
+  - ability to load to DynamoDB from JSON
+  - handle dynamodb-local via ``DYNAMO_ENDPOINT`` environment variable
+
 2019-02-20 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
 
 import sys
+import os
 import argparse
 import logging
 import csv
@@ -57,12 +63,33 @@ class DynamoDumper(object):
 
     def __init__(self):
         logger.debug('Connecting to DynamoDB')
-        self._dynamo = boto3.resource('dynamodb')
+        kwargs = {}
+        if 'AWS_DEFAULT_REGION' in os.environ:
+            kwargs['region_name'] = os.environ['AWS_DEFAULT_REGION']
+        if 'DYNAMO_ENDPOINT' in os.environ:
+            kwargs['endpoint_url'] = os.environ['DYNAMO_ENDPOINT']
+        self._dynamo = boto3.resource('dynamodb', **kwargs)
 
-    def run(self, table_name, fields=None, sort_field=None):
+    def run(self, table_name, fields=None, sort_field=None, as_json=False):
         records, all_fields = self._get_data(table_name)
         if fields is None:
             fields = sorted(all_fields)
+        if as_json:
+            print(json.dumps(records))
+        else:
+            print(self._to_csv(records, fields, sort_field))
+
+    def load_from_json(self, table_name, fname):
+        table = self._dynamo.Table(table_name)
+        with open(fname, 'r') as fh:
+            records = json.loads(fh.read())
+        count = 0
+        for r in records:
+            table.put_item(Item=r)
+            count += 1
+        print('Loaded %d items into DynamoDB table %s' % (count, table_name))
+
+    def _to_csv(self, records, fields, sort_field):
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=fields, restval='')
         writer.writeheader()
@@ -76,7 +103,7 @@ class DynamoDumper(object):
                 if isinstance(v, type([])):
                     r[k] = ', '.join(v)
             writer.writerow(r)
-        print(output.getvalue())
+        return output.getvalue()
 
     def _get_data(self, table_name):
         table = self._dynamo.Table(table_name)
@@ -102,6 +129,14 @@ def parse_args(argv):
     p.add_argument('-s', '--sort-field', dest='sort_field', type=str,
                    action='store', default=None,
                    help='Optional, name of field to sort on')
+    p.add_argument('-j', '--json', dest='json', action='store_true',
+                   default=False,
+                   help='dump to JSON instead of CSV '
+                        '(ignores -f/--field-order')
+    p.add_argument('-r', '--reverse', dest='reverse', action='store', type=str,
+                   default=False,
+                   help='reverse - load FROM json file (filename specified in '
+                        'this option) TO dynamodb table')
     p.add_argument('TABLE_NAME', action='store', type=str,
                    help='DynamoDB table name to dump')
     args = p.parse_args(argv)
@@ -112,6 +147,10 @@ if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     if args.field_order is not None:
         args.field_order = args.field_order.split(',')
-    DynamoDumper().run(
-        args.TABLE_NAME, fields=args.field_order, sort_field=args.sort_field
-    )
+    if args.reverse:
+        DynamoDumper().load_from_json(args.TABLE_NAME, args.reverse)
+    else:
+        DynamoDumper().run(
+            args.TABLE_NAME, fields=args.field_order,
+            sort_field=args.sort_field, as_json=args.json
+        )
