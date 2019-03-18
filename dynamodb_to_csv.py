@@ -25,6 +25,9 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2019-03-18 Jason Antman <jason@jasonantman.com>:
+  - fix bug in limiting fields
+
 2019-03-03 Jason Antman <jason@jasonantman.com>:
   - ability to output to JSON instead
   - ability to load to DynamoDB from JSON
@@ -102,7 +105,9 @@ class DynamoDumper(object):
                 # format lists nicely
                 if isinstance(v, type([])):
                     r[k] = ', '.join(v)
-            writer.writerow(r)
+            writer.writerow({
+                x: r[x] for x in fields
+            })
         return output.getvalue()
 
     def _get_data(self, table_name):
