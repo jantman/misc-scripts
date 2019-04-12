@@ -256,17 +256,34 @@ class LastpassToVault(object):
         """
         d = {}
         for acct in self.lp.accounts:
-            if acct.group not in d:
-                d[acct.group] = {}
-            a = deepcopy(vars(acct))
+            group = acct.group
+            if isinstance(group, type(b'')):
+                group = group.decode()
+            if group not in d:
+                d[group] = {}
+            a = self._clean_dict(vars(acct))
             if a['name'].strip() == '':
                 a['name'] = a['id']
             del a['group']
             del a['id']
-            d[acct.group][a['name']] = a
+            d[group][a['name']] = a
             logger.debug('Got secret "%s" in group "%s" (id %s)',
-                         acct.name, acct.group, acct.id)
+                         acct.name, group, acct.id)
         return d
+
+    def _clean_dict(self, d):
+        res = {}
+        for k, v in d.items():
+            if isinstance(k, type(b'')):
+                k = k.decode()
+            if isinstance(v, type({})):
+                res[k] = self._clean_dict(v)
+            elif isinstance(v, type(b'')):
+                res[k] = v.decode()
+            else:
+                res[k] = v
+        return res
+
 
 def parse_args(argv):
     """
