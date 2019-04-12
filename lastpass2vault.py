@@ -9,21 +9,15 @@ LastPass to a HashiCorp Vault server.
 Requirements
 ------------
 
+Python 2.7 or >= 3.4
+
 hvac==0.2.17
-lastpass-python==0.1.1
-
-NOTE: If you want to get the "Notes" field from LastPass entries, the released
-version of lastpass-python silently discards it. You can install the "notes"
-branch of my fork (see PR #26,
-https://github.com/konomae/lastpass-python/pull/26 ) with:
-
-pip install \
-  git+https://github.com/jantman/lastpass-python.git@notes#egg=lastpass
+lastpass-python==0.3.1
 
 License
 -------
 
-Copyright 2017 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2017-2019 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 Usage
@@ -37,6 +31,10 @@ Usage
 
 CHANGELOG
 ---------
+
+2019-04-12 Jason Antman <jason@jasonantman.com>:
+  - Bump recommended lastpass-python version to 0.3.1 since my PR has been merged
+  - Python 3 compatibility
 
 2017-10-22 Jason Antman <jason@jasonantman.com>:
   - Add support for notes field using my fork of lastpass-python (PR pending)
@@ -55,6 +53,10 @@ from copy import deepcopy
 import hvac
 import lastpass
 
+if sys.version_info[0] >= 3:
+    input_func = input
+else:
+    input_func = raw_input
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -129,7 +131,7 @@ class LastpassToVault(object):
         """
         logger.debug('Authenticating to LastPass with username: %s', lp_user)
         passwd = getpass('LastPass Password: ').strip()
-        mfa = raw_input('LastPass MFA (Return for no MFA): ').strip()
+        mfa = input_func('LastPass MFA (Return for no MFA): ').strip()
         if mfa == '':
             logger.info('Authenticating to LastPass without MFA')
             lp = lastpass.Vault.open_remote(lp_user, passwd)
