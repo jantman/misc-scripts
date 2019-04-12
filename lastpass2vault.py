@@ -131,7 +131,9 @@ class LastpassToVault(object):
         """
         logger.debug('Authenticating to LastPass with username: %s', lp_user)
         passwd = getpass('LastPass Password: ').strip()
-        mfa = input_func('LastPass MFA (Return for no MFA): ').strip()
+        mfa = input_func(
+            'LastPass MFA (OTP or YubiKey; Return for no MFA): '
+        ).strip()
         if mfa == '':
             logger.info('Authenticating to LastPass without MFA')
             lp = lastpass.Vault.open_remote(lp_user, passwd)
