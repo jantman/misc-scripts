@@ -30,6 +30,10 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+
+2019-04-22 Jason Antman <jason@jasonantman.com>:
+  - Add -R option to remove finished/seeding torrents
+
 2018-12-05 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
