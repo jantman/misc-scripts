@@ -65,13 +65,15 @@ class TransmissionPrioritizer(object):
         )
         logger.debug('Connected to Transmission')
 
-    def run(self, batch=2):
+    def run(self, batch=2, rm_finished=False):
         logger.debug('Getting current torrents...')
         torrents = self._get_active_torrents()
         logger.info('Found %d active torrent(s)...', len(torrents))
         for t in torrents:
             self._set_file_priority(t, batch)
         logger.info('Done.')
+        if rm_finished:
+            self._rm_finished_torrents()
 
     def _set_file_priority(self, torrent, batch):
         t_id = torrent._fields['id'].value
@@ -113,7 +115,6 @@ class TransmissionPrioritizer(object):
         logger.debug('set_files: %s', data)
         self._client.set_files(data)
 
-
     def _get_active_torrents(self):
         r = self._client.get_torrents()
         active = []
@@ -127,6 +128,24 @@ class TransmissionPrioritizer(object):
                 active.append(t)
         logger.debug('%d of %d torrents active', len(active), len(r))
         return active
+
+    def _rm_finished_torrents(self):
+        logger.debug('Looking for finished torrents to remove...')
+        r = self._client.get_torrents()
+        active = []
+        for t in r:
+            logger.debug(
+                'Torrent %s (%s) - %s, %.2f%% complete',
+                t._fields['id'].value, t._get_name_string(),
+                t.status, t.progress
+            )
+            if t.status != 'seeding' or t.progress != 100:
+                continue
+            logger.info(
+                'Removing finished/seeding torrent: %s (%s)',
+                t._fields['id'].value, t._get_name_string()
+            )
+            self._client.remove_torrent(t._fields['id'].value)
 
 
 def parse_args(argv):
@@ -150,6 +169,10 @@ def parse_args(argv):
                    default=2,
                    help='Number of files to set at high priority at a time, '
                         'per torrent. (default: 2)')
+    p.add_argument('-R', '--remove-complete', dest='rm_finished',
+                   action='store_true', default=False,
+                   help='Also remove seeding / 100%% complete torrents ('
+                        'remove only the torrent, not data).')
 
     args = p.parse_args(argv)
 
@@ -194,4 +217,4 @@ if __name__ == "__main__":
 
     TransmissionPrioritizer(
         args.host, args.port, args.user, args.passwd
-    ).run(args.batch)
+    ).run(args.batch, rm_finished=args.rm_finished)
