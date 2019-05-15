@@ -20,6 +20,8 @@ https://github.com/jantman/misc-scripts/blob/master/watch_jenkins.py
 
 CHANGELOG:
 
+2019-05-15 jantman:
+- properly handle Pipeline View job URLs
 2017-08-23 jantman:
 - properly handle MultiBranch Project PR URLs
 2016-08-17 jantman:
@@ -142,6 +144,9 @@ def get_job_name_and_build_number(url):
     # handle Multibranch job URLs
     if '/view/change-requests/job/' in job:
         job = job.replace('/view/change-requests/job/', '/job/')
+    # handle pipeline job URLs
+    if '/view/Pipeline_' in job:
+        job = re.sub('\/view\/Pipeline_[^\/]+\/', '/', job)
     job = job.replace('job/', '').strip('/')
     return job, build_no
 
