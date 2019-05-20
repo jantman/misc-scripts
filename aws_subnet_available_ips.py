@@ -31,7 +31,7 @@ from botocore.exceptions import ClientError
 try:
     from netaddr import IPNetwork
 except ImportError:
-    raise SystemExit("This script requires boto3. Please 'pip install netaddr'")
+    raise SystemExit("This script requires netaddr. Please 'pip install netaddr'")
 
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
