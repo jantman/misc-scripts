@@ -7,10 +7,13 @@ re-run only the test commands).
 If you have ideas for improvements, or want the latest version, it's at:
 <https://github.com/jantman/misc-scripts/blob/master/toxit.py>
 
-Copyright 2016-2016 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2016-2019 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2019-07-17 Jason Antman <jason@jasonantman.com>:
+  - BREAKING CHANGE: refactor to only support running one environment
+    at a time, but support specifying a single test script to run with py.test.
 2017-03-22 Jason Antman <jason@jasonantman.com>:
   - support passenv and setenv
   - major internal refactor
@@ -83,7 +86,6 @@ class ToxIt(object):
             logger.debug('env %s: %s', envname, env_config[envname])
         return env_config
 
-
     def run_env(self, env_config):
         """run a single env; return True (success) or False (failure)"""
         for cmd in env_config['commands']:
@@ -103,14 +105,16 @@ class ToxIt(object):
             e[k] = v
         return e
 
-    def run(self, envlist):
-        """run all selected envs"""
-        failed = False
-        for e in envlist:
-            res = self.run_env(self.env_config[e])
-            if not res:
-                failed = True
-        if failed:
+    def run(self, envname, test_script=None):
+        """run selected env"""
+        if test_script is not None:
+            for idx, cmd in enumerate(self.env_config[envname]['commands']):
+                if not cmd[0].endswith('py.test'):
+                    continue
+                cmd[-1] = test_script
+                self.env_config[envname]['commands'][idx] = cmd
+        res = self.run_env(self.env_config[envname])
+        if not res:
             print('Some commands failed.')
             raise SystemExit(1)
         print('All commands succeeded.')
@@ -130,7 +134,11 @@ def parse_args(argv):
     p.add_argument('-v', '--verbose', dest='verbose', action='store_true',
                    default=False,
                    help='verbose output')
-    p.add_argument('TOXENV', type=str, nargs='+', help='Tox environment name')
+    p.add_argument('TOXENV', type=str, help='Tox environment name to run')
+    p.add_argument('TEST_FILE', type=str, nargs='?', default=None,
+                   help='Optional - path to one test file to run in place of'
+                        'running all tests (replaces last argument on the '
+                        'pytest command line)')
     return p.parse_args(argv)
 
 
@@ -139,4 +147,4 @@ if __name__ == "__main__":
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     script = ToxIt()
-    script.run(args.TOXENV)
+    script.run(args.TOXENV, args.TEST_FILE)
