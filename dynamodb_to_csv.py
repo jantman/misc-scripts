@@ -25,6 +25,9 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2019-08-01 Jason Antman <jason@jasonantman.com>:
+  - serialize Decimals as floats
+
 2019-03-18 Jason Antman <jason@jasonantman.com>:
   - fix bug in limiting fields
 
@@ -44,6 +47,7 @@ import logging
 import csv
 import io
 import json
+from decimal import Decimal
 
 try:
     import boto3
@@ -62,6 +66,15 @@ for lname in ['urllib3', 'boto3', 'botocore']:
     l.propagate = True
 
 
+class CustomEncoder(json.JSONEncoder):
+
+    def default(self, o):
+       if isinstance(o, Decimal):
+           return float(str(o))
+       # Let the base class default method raise the TypeError
+       return json.JSONEncoder.default(self, o)
+
+
 class DynamoDumper(object):
 
     def __init__(self):
@@ -78,7 +91,7 @@ class DynamoDumper(object):
         if fields is None:
             fields = sorted(all_fields)
         if as_json:
-            print(json.dumps(records))
+            print(json.dumps(records, cls=CustomEncoder))
         else:
             print(self._to_csv(records, fields, sort_field))
 
