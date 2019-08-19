@@ -11,6 +11,8 @@ Requirements
 ------------
 
 * lxml
+* matplotlib (tested with 2.4.0)
+* numpy (tested with 1.16.3)
 
 License
 -------
@@ -23,6 +25,7 @@ CHANGELOG
 
 2019-08-19 Jason Antman <jason@jasonantman.com>:
   - Python3.7 support
+  - Add graphs of SMSes by day
 
 2017-02-06 Jason Antman <jason@jasonantman.com>:
   - fix KeyError
@@ -52,8 +55,23 @@ except ImportError:
         except ImportError:
             raise SystemExit(
                 'Unable to import ElementTree from any known place; please '
-                '"pip install lxml'
+                '"pip install lxml"'
             )
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    raise SystemExit(
+        'Error: could not import matplotlib. Please "pip install matplotlib"'
+    )
+
+try:
+    import numpy as np
+except ImportError:
+    raise SystemExit(
+        'Error: could not import numpy. Please "pip install numpy"'
+    )
+
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -226,25 +244,63 @@ class SMSdumper(object):
         :type name: str
         """
         c_data = {}
+        sms_datetimes = []
         if name in self.calls:
             for dt, data in self.calls[name].items():
                 data['_record_type'] = 'call'
                 while dt in c_data:
                     dt = dt + timedelta(microseconds=1)
                 c_data[dt] = data
+        graph_fname = None
         if name in self.smses:
             for dt, data in self.smses[name].items():
                 data['_record_type'] = 'sms'
                 while dt in c_data:
                     dt = dt + timedelta(microseconds=1)
+                sms_datetimes.append(dt)
                 c_data[dt] = data
-        html = self.contact_html(name, c_data)
+            graph_fname = self.graph_contact_sms(name, sms_datetimes)
+        html = self.contact_html(name, c_data, graph_fname)
         fpath = os.path.join(self.outdir, self.fs_safe_name(name + '.html'))
         with open(fpath, 'w') as fh:
             fh.write(html)
         logger.info('HTML for %s written to: %s', name, fpath)
 
-    def contact_html(self, name, contact_data):
+    def graph_contact_sms(self, contact_name, sms_datetimes):
+        if len(sms_datetimes) == 0:
+            return None
+        fname = self.fs_safe_name(contact_name + '.png')
+        fpath = os.path.join(self.outdir, 'media', fname)
+        buckets = {}
+        for dt in sms_datetimes:
+            d = dt.date()
+            if d not in buckets:
+                buckets[d] = 1
+            else:
+                buckets[d] += 1
+        min_dt = min(buckets.keys())
+        xitems = []
+        yitems = []
+        while min_dt <= max(buckets.keys()):
+            xitems.append(min_dt)
+            if min_dt not in buckets:
+                yitems.append(0)
+            else:
+                yitems.append(buckets[min_dt])
+            min_dt += timedelta(days=1)
+        fig = plt.figure(figsize=(10.24, 7.68))
+        plt.plot_date(
+            np.array(xitems),
+            np.array(yitems),
+            'b-',
+            xdate=True
+        )
+        fig.suptitle('SMS Count By Day - %s' % contact_name)
+        fig.savefig(fpath, dpi=100)
+        plt.clf()
+        return fname
+
+    def contact_html(self, name, contact_data, sms_graph_path):
         """return HTML string for the contact"""
         s = dedent("""
         <html>
@@ -272,7 +328,7 @@ class SMSdumper(object):
             height: 200px;
         }
 
-        img {
+        img !.graph {
             width: auto;
             height: auto;
             max-width: 200;
@@ -283,6 +339,10 @@ class SMSdumper(object):
         <body>
         """ % name)
         s += "<h1>Calls and SMS for %s</h1>\n" % name
+        if sms_graph_path is not None:
+            s += '<h2>SMS Count by Day</h2>\n'
+            s += '<img src="media/%s" height="768" width="1024" ' \
+                 'class="graph" />\n' % sms_graph_path
         for dt in sorted(contact_data.keys()):
             s += self.format_record(dt, contact_data[dt])
         s += "</body>\n</html>\n"
