@@ -10,16 +10,19 @@ riteshsahu.SMSBackupRestore&hl=en>`_ Android app, including MMS.
 Requirements
 ------------
 
-lxml
+* lxml
 
 License
 -------
 
-Copyright 2016 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2016-2019 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
+
+2019-08-19 Jason Antman <jason@jasonantman.com>:
+  - Python3.7 support
 
 2017-02-06 Jason Antman <jason@jasonantman.com>:
   - fix KeyError
@@ -47,7 +50,10 @@ except ImportError:
             # normal ElementTree install
             import elementtree.ElementTree as etree
         except ImportError:
-            raise SystemExit("Failed to import ElementTree from any known place")
+            raise SystemExit(
+                'Unable to import ElementTree from any known place; please '
+                '"pip install lxml'
+            )
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -67,6 +73,7 @@ SMS_TYPES = {
     '2': 'Sent to',
     '3': 'Draft to'
 }
+
 
 class SMSdumper(object):
 
@@ -88,12 +95,14 @@ class SMSdumper(object):
             self.calls = self.parse_calls()
             logger.debug("Calls: %s", self.calls)
         else:
-            logger.warning("No calls XML path specified; do not have call logs.")
+            logger.warning(
+                "No calls XML path specified; do not have call logs."
+            )
         if not os.path.exists(self.mediadir):
             os.makedirs(self.mediadir)
         self.smses = self.parse_sms()
         logger.debug("All SMSes: %s", self.smses)
-        for name in set(self.calls.keys() + self.smses.keys()):
+        for name in set(list(self.calls.keys()) + list(self.smses.keys())):
             self.write_contact_output(name)
 
     def parse_calls(self):
@@ -103,8 +112,10 @@ class SMSdumper(object):
         calls = {}
         for call in root.xpath('//call'):
             name = call.attrib['number']
-            if ('contact_name' in call.attrib and
-                    call.attrib['contact_name'] != ''):
+            if (
+                'contact_name' in call.attrib and
+                call.attrib['contact_name'] != ''
+            ):
                 name = call.attrib['contact_name']
             if name not in calls:
                 calls[name] = {}
@@ -121,8 +132,10 @@ class SMSdumper(object):
         for sms in root.xpath('//sms'):
             try:
                 name = sms.attrib['address']
-                if ('contact_name' in sms.attrib and
-                            sms.attrib['contact_name'] != ''):
+                if (
+                    'contact_name' in sms.attrib and
+                    sms.attrib['contact_name'] != ''
+                ):
                     name = sms.attrib['contact_name']
                 if name not in smses:
                     smses[name] = {}
@@ -135,8 +148,10 @@ class SMSdumper(object):
         for mms in root.xpath('//mms'):
             try:
                 name = mms.attrib['address']
-                if ('contact_name' in mms.attrib and
-                        mms.attrib['contact_name'] != ''):
+                if (
+                    'contact_name' in mms.attrib and
+                    mms.attrib['contact_name'] != ''
+                ):
                     name = mms.attrib['contact_name']
                 if name not in smses:
                     smses[name] = {}
@@ -197,7 +212,7 @@ class SMSdumper(object):
         logger.debug("Writing file to: %s", fpath)
         try:
             data = b64decode(data)
-        except:
+        except Exception:
             pass
         with open(fpath, 'wb') as fh:
             fh.write(data)
@@ -212,13 +227,13 @@ class SMSdumper(object):
         """
         c_data = {}
         if name in self.calls:
-            for dt, data in self.calls[name].iteritems():
+            for dt, data in self.calls[name].items():
                 data['_record_type'] = 'call'
                 while dt in c_data:
                     dt = dt + timedelta(microseconds=1)
                 c_data[dt] = data
         if name in self.smses:
-            for dt, data in self.smses[name].iteritems():
+            for dt, data in self.smses[name].items():
                 data['_record_type'] = 'sms'
                 while dt in c_data:
                     dt = dt + timedelta(microseconds=1)
@@ -226,7 +241,7 @@ class SMSdumper(object):
         html = self.contact_html(name, c_data)
         fpath = os.path.join(self.outdir, self.fs_safe_name(name + '.html'))
         with open(fpath, 'w') as fh:
-            fh.write(html.encode('utf-8'))
+            fh.write(html)
         logger.info('HTML for %s written to: %s', name, fpath)
 
     def contact_html(self, name, contact_data):
@@ -343,8 +358,8 @@ class SMSdumper(object):
             elif part['ct'].startswith('image/'):
                 s += '<a href="%s"><img src="%s" ' \
                      'width="200" height="200" /></a>' % (
-                    part['data_file_path'], part['data_file_path']
-                )
+                         part['data_file_path'], part['data_file_path']
+                     )
             else:
                 if 'data_file_path' in part:
                     s += 'Unsupported attachment content type %s: %s' % (
@@ -406,6 +421,7 @@ def parse_args(argv):
 
     return args
 
+
 def set_log_info():
     """set logger level to INFO"""
     set_log_level_format(logging.INFO,
@@ -433,6 +449,7 @@ def set_log_level_format(level, format):
     formatter = logging.Formatter(fmt=format)
     logger.handlers[0].setFormatter(formatter)
     logger.setLevel(level)
+
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
