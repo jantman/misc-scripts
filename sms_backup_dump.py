@@ -95,7 +95,8 @@ SMS_TYPES = {
 
 class SMSdumper(object):
 
-    def __init__(self, outdir, sms_path, calls_path=None):
+    def __init__(self, outdir, sms_path, calls_path=None, graph=False):
+        self._graph = graph
         self.sms_path = os.path.abspath(os.path.expanduser(sms_path))
         self.calls_path = None
         if calls_path is not None:
@@ -257,9 +258,11 @@ class SMSdumper(object):
                 data['_record_type'] = 'sms'
                 while dt in c_data:
                     dt = dt + timedelta(microseconds=1)
-                sms_datetimes.append(dt)
+                if data.get('type', '') == '1':
+                    sms_datetimes.append(dt)
                 c_data[dt] = data
-            graph_fname = self.graph_contact_sms(name, sms_datetimes)
+            if self._graph:
+                graph_fname = self.graph_contact_sms(name, sms_datetimes)
         html = self.contact_html(name, c_data, graph_fname)
         fpath = os.path.join(self.outdir, self.fs_safe_name(name + '.html'))
         with open(fpath, 'w') as fh:
@@ -289,13 +292,11 @@ class SMSdumper(object):
                 yitems.append(buckets[min_dt])
             min_dt += timedelta(days=1)
         fig = plt.figure(figsize=(10.24, 7.68))
-        plt.plot_date(
+        plt.bar(
             np.array(xitems),
-            np.array(yitems),
-            'b-',
-            xdate=True
+            np.array(yitems)
         )
-        fig.suptitle('SMS Count By Day - %s' % contact_name)
+        fig.suptitle('Incoming SMS Count By Day - %s' % contact_name)
         fig.savefig(fpath, dpi=100)
         plt.clf()
         return fname
@@ -474,6 +475,8 @@ def parse_args(argv):
                    help='output directory (default: ./sms_out)')
     p.add_argument('-c', '--calls-xml', dest='calls_xml', action='store',
                    type=str, help='Calls XML file path', default=None)
+    p.add_argument('-g', '--graph', dest='graph', action='store_true',
+                   default=False, help='Graph incoming SMS over time')
     p.add_argument('SMS_XML', action='store', type=str,
                    help='SMS XML file path')
 
@@ -520,5 +523,7 @@ if __name__ == "__main__":
     elif args.verbose == 1:
         set_log_info()
 
-    script = SMSdumper(args.outdir, args.SMS_XML, calls_path=args.calls_xml)
+    script = SMSdumper(
+        args.outdir, args.SMS_XML, calls_path=args.calls_xml, graph=args.graph
+    )
     script.run()
