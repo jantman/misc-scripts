@@ -14,6 +14,8 @@ REQUIREMENTS:
 trello and python-dateutil distributions
 
 CHANGELOG:
+2019-08-24 Jason Antman <jason@jasonantman.com>:
+  - add -C/--checklist option to support adding checklists to cards
 2019-01-05 Jason Antman <jason@jasonantman.com>:
   - add -D/--description to support adding description on new cards (only)
 2016-12-03 Jason Antman <jason@jasonantman.com>:
@@ -80,7 +82,7 @@ class TrelloEnsureCard:
         logger.debug('TrelloApi initialized')
 
     def run(self, card_title, list_name, board_name, labels=[], pos='bottom',
-            desc=None):
+            desc=None, checklist_names=[]):
         """main entry point"""
         board_id = self.get_board_id(board_name)
         board = self.trello.boards.get(board_id, **self.board_get_kwargs)
@@ -110,6 +112,8 @@ class TrelloEnsureCard:
                         desired_card['url'])
         if len(card_labels) > 0:
             self.ensure_card_labels(desired_card, card_labels)
+        if len(checklist_names) > 0:
+            self.ensure_card_checklists(desired_card, checklist_names)
 
     def new_card(self, **kwargs):
         """
@@ -198,6 +202,34 @@ class TrelloEnsureCard:
                     self.trello.cards.new_label(card['id'], color)
         logger.debug('Done ensuring labels.')
 
+    def ensure_card_checklists(self, desired_card, checklist_names):
+        """
+        Given a card dict and a list of checklist names, ensure checklists
+        with each of those names are set on the card.
+
+        :param card: Trello card information
+        :type card: dict
+        :param checklist_names: names of checklists to ensure are on the card
+        :type checklist_names: list
+        """
+        logger.debug('Checklists desired: %s', checklist_names)
+        logger.debug(
+            'Checklists on card: %s', desired_card.get('idChecklists', [])
+        )
+        if not checklist_names:
+            return
+        checklists_present = []
+        if desired_card is not None:
+            for clid in desired_card.get('idChecklists', []):
+                cl = self.trello.checklists.get(clid)
+                checklists_present.append(cl['name'])
+                logger.debug('Checklist ID %s: %s', clid, cl)
+        for clname in checklist_names:
+            if clname in checklists_present:
+                continue
+            logger.debug('Adding checklist with name: %s', clname)
+            self.new_checklist(desired_card['id'], clname)
+
     def filter_cards(self, orig_cards, list_id):
         """filter cards to ones with a due date, and if list_id is not None,
         also in the specified list"""
@@ -239,6 +271,15 @@ class TrelloEnsureCard:
         raise SystemExit('Error: could not find board with name "%s"',
                          board_name)
 
+    def new_checklist(self, card_id, name):
+        resp = requests.post(
+            "https://trello.com/1/cards/%s/checklists" % (card_id),
+            params=dict(key=self.trello._apikey, token=self.trello._token),
+            data=dict(name=name)
+        )
+        resp.raise_for_status()
+        return resp.json()
+
 
 def parse_args(argv):
     """
@@ -266,6 +307,10 @@ def parse_args(argv):
                    'or a positive number (default: bottom)')
     p.add_argument('-D', '--description', dest='desc', action='store', type=str,
                    default=None, help='card description')
+    p.add_argument('-C', '--checklist', dest='checklist_name', action='append',
+                   default=[],
+                   help='Ensure that a checklist with the specified name '
+                        'exists on the card. May be specified multiple times.')
     p.add_argument('CARD_TITLE', action='store', type=str,
                    help='card title to ensure')
 
@@ -292,5 +337,6 @@ if __name__ == "__main__":
                board_name=args.BOARD_NAME,
                labels=args.labels,
                pos=args.pos,
-               desc=args.desc
+               desc=args.desc,
+               checklist_names=args.checklist_name
     )
