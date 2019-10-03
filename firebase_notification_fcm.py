@@ -10,7 +10,7 @@ def data_template(fcmToken, title, description, bigPicture):
 
 firebase = firebase.FirebaseApplication('https://your-project-url.firebaseio.com', None) #add your project url
 
-access_token = "Enter Firebase Access Token" #Type AIza..
+access_token = "Enter Firebase Legacy Server Key" # Use Legacy Server Key on your Project Settings -> Cloud Messaging
 headers = {"Content-Type" : "application/json", "authorization" : "key=" + access_token}
 
 fcmTokens = firebase.get("/fcmTokens", None) #FCM Tokens stored in Realtime Database
