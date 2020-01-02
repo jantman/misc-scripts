@@ -218,7 +218,10 @@ class UniFiSwitchToStatsd:
         for idx, data in stats.items():
             mname = self.if_metric_names[idx]
             for k, v in data.items():
-                buf.append(f'{mname}.{k}:{v}|g')
+                if k in ['ifAdminStatus', 'ifOperStatus']:
+                    buf.append(f'{mname}.{k}:{v}|g')
+                else:
+                    buf.append(f'{mname}.{k}:{v}|c')
             self.statsd.send_data(buf)
             buf = []
         self.statsd.flush()
