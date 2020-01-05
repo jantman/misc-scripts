@@ -320,6 +320,7 @@ class UniFiSwitchToStatsd:
             self._last_values[metric_name] = numeric_val
             return None
         old = self._last_values[metric_name]
+        self._last_values[metric_name] = numeric_val
         # Check for rollover
         if numeric_val < old:
             old = old - max_val
