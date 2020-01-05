@@ -32,6 +32,9 @@ The latest version of this script can be found at:
 CHANGELOG
 ---------
 
+2020-01-05 Jason Antman <jason@jasonantman.com>:
+  - fix major bug in handling of counter values
+
 2020-01-01 Jason Antman <jason@jasonantman.com>:
   - initial version of script
 """
@@ -43,10 +46,11 @@ import re
 import socket
 import time
 import json
-from typing import Union, Dict, List, Any
+from typing import List, Any, Optional, Dict
 from pysnmp.hlapi import (
     SnmpEngine, CommunityData, UdpTransportTarget, ContextData, ObjectType,
-    ObjectIdentity, nextCmd, Integer32, Gauge32, Integer, Counter32, Counter64
+    ObjectIdentity, nextCmd, Integer32, Gauge32, Integer, Counter32, Counter64,
+    EndOfMibView
 )
 
 
@@ -144,6 +148,15 @@ class StatsdSender:
 
 class UniFiSwitchToStatsd:
 
+    GAUGE_METRICS = [
+        'ifInDiscards',
+        'ifInErrors',
+        'ifOutDiscards',
+        'ifOutErrors',
+        'ifAdminStatus',
+        'ifOperStatus'
+    ]
+
     def __init__(self, switch_ip: str, community: str = 'public',
                  statsd_host: str = '127.0.0.1',
                  statsd_port: int = 8125, dry_run: bool = False,
@@ -179,24 +192,25 @@ class UniFiSwitchToStatsd:
         self.if_names: dict = {}
         self.if_aliases: dict = {}
         self.if_metric_names: dict = {}
+        self._last_values: dict = {}
 
-    def run(self, onetime=False, interval=10):
+    def run(self, onetime: bool = False, interval: int = 10):
         logger.debug('Getting iterface names and aliases')
         for idx, vals in self.table([
             ObjectType(ObjectIdentity('IF-MIB', 'ifName')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifAlias')),
         ]).items():
-            self.if_names[idx] = vals['ifName']
-            self.if_aliases[idx] = vals['ifAlias']
+            self.if_names[idx] = self._decode_value(vals['ifName'])
+            self.if_aliases[idx] = self._decode_value(vals['ifAlias'])
             self.if_metric_names[idx] = self._metric_for_if(
-                vals['ifName'], vals['ifAlias'], idx
+                self.if_names[idx], self.if_aliases[idx], idx
             )
         logger.debug('Set ifNames: %s', self.if_names)
         logger.debug('Set ifAliases: %s', self.if_aliases)
         logger.info('Set if_metric_names: %s', self.if_metric_names)
         while True:
             start = time.time()
-            self.do_iteration()
+            self.do_iteration(interval=interval)
             if onetime:
                 break
             duration = time.time() - start
@@ -211,17 +225,19 @@ class UniFiSwitchToStatsd:
             return self.statsd._clean_name(name)
         return f'{idx}'
 
-    def do_iteration(self):
+    def do_iteration(self, interval: int = 10):
         stats: dict = self.get_stats()
-        logger.debug('Stats: %s', json.dumps(stats, sort_keys=True))
         buf: list = []
         for idx, data in stats.items():
             mname = self.if_metric_names[idx]
             for k, v in data.items():
-                if k in ['ifAdminStatus', 'ifOperStatus']:
-                    buf.append(f'{mname}.{k}:{v}|g')
+                if k in self.GAUGE_METRICS:
+                    buf.append(f'{mname}.{k}:{v._value}|g')
                 else:
-                    buf.append(f'{mname}.{k}:{v}|c')
+                    kname = mname + '.' + k
+                    val = self._value_for_counter(kname, v, interval)
+                    if val is not None:
+                        buf.append(f'{kname}:{val}|c')
             self.statsd.send_data(buf)
             buf = []
         self.statsd.flush()
@@ -233,14 +249,16 @@ class UniFiSwitchToStatsd:
             ObjectType(ObjectIdentity('IF-MIB', 'ifOperStatus')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifInOctets')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifInUcastPkts')),
-            ObjectType(ObjectIdentity('IF-MIB', 'ifInNUcastPkts')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifInDiscards')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifInErrors')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifOutOctets')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifOutUcastPkts')),
-            ObjectType(ObjectIdentity('IF-MIB', 'ifOutNUcastPkts')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifOutDiscards')),
             ObjectType(ObjectIdentity('IF-MIB', 'ifOutErrors')),
+            ObjectType(ObjectIdentity('IF-MIB', 'ifInMulticastPkts')),
+            ObjectType(ObjectIdentity('IF-MIB', 'ifInBroadcastPkts')),
+            ObjectType(ObjectIdentity('IF-MIB', 'ifOutMulticastPkts')),
+            ObjectType(ObjectIdentity('IF-MIB', 'ifOutBroadcastPkts')),
         ])
         for idx, vals in self.table([
             ObjectType(ObjectIdentity(
@@ -283,16 +301,36 @@ class UniFiSwitchToStatsd:
             if idx not in stats:
                 stats[idx] = {}
             stats[idx].update(vals)
-        for idx, vals in self.table([
-            ObjectType(ObjectIdentity('IF-MIB', 'ifInMulticastPkts')),
-            ObjectType(ObjectIdentity('IF-MIB', 'ifInBroadcastPkts')),
-            ObjectType(ObjectIdentity('IF-MIB', 'ifOutMulticastPkts')),
-            ObjectType(ObjectIdentity('IF-MIB', 'ifOutBroadcastPkts')),
-        ]).items():
-            if idx not in stats:
-                stats[idx] = {}
-            stats[idx].update(vals)
         return stats
+
+    def _value_for_counter(
+        self, metric_name: str, value: Any, interval_sec: int
+    ) -> Optional[int]:
+        if isinstance(value, EndOfMibView):
+            self._last_values[metric_name] = 0
+            return 0
+        if not isinstance(value, Counter32):
+            raise RuntimeError(
+                f'ERROR: No code path to handle value type {type(value)} '
+                f'for metric {metric_name}.'
+            )
+        numeric_val = value._value
+        max_val = 4294967296
+        if metric_name not in self._last_values:
+            self._last_values[metric_name] = numeric_val
+            return None
+        old = self._last_values[metric_name]
+        # Check for rollover
+        if numeric_val < old:
+            old = old - max_val
+        # Get Change in X (value)
+        derivative_x = numeric_val - old
+        # Get Change in Y (time)
+        derivative_y = interval_sec
+        result = float(derivative_x) / float(derivative_y)
+        if result < 0:
+            result = 0
+        return result
 
     def _decode_identity(self, oid: ObjectIdentity) -> tuple:
         sym: tuple = oid.getMibSymbol()
@@ -316,12 +354,12 @@ class UniFiSwitchToStatsd:
         if val.__class__.__name__ == 'PhysAddress':
             return val.prettyPrint()
         if val.__class__.__name__ == 'EndOfMibView':
-            return None
+            return 0
         raise RuntimeError(
             f'ERROR: No decoder for value: {val} ({type(val)})'
         )
 
-    def table(self, objects: list) -> dict:
+    def table(self, objects: list) -> Dict[int, Dict[str, Any]]:
         res = {}
         for (
             error_indication, error_status, error_index, var_binds
@@ -349,7 +387,7 @@ class UniFiSwitchToStatsd:
                 _, itemname, idx = self._decode_identity(varBind[0])
                 if idx not in res:
                     res[idx] = {}
-                res[idx][itemname] = self._decode_value(varBind[1])
+                res[idx][itemname] = varBind[1]
         return res
 
 
