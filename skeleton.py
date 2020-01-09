@@ -3,7 +3,7 @@
 Skeleton
 ========
 
-Generic python2.7+ (incl. py3x) command line script skeleton.
+Generic python3 command line script skeleton.
 This implements most of the common stuff I put in one-off scripts
 to make them actually not-so-shitty.
 
@@ -19,12 +19,15 @@ see <https://docs.python.org/2/library/optparse.html>.
 License
 -------
 
-Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2014-2020 Jason Antman <jason@jasonantman.com>
+<http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
 
+2020-01-09 Jason Antman <jason@jasonantman.com>:
+  - cleanup some useless comments and logging, PEP8 fixes
 2016-08-10 Jason Antman <jason@jasonantman.com>:
   - nicer logging setup and docstring
   - new-style class
@@ -49,18 +52,12 @@ logging.basicConfig(level=logging.WARNING, format=FORMAT)
 logger = logging.getLogger()
 
 
-class SimpleScript(object):
-    """ might as well use a class. It'll make things easier later. """
+class SimpleScript:
 
     def __init__(self, dry_run=False):
-        """ init method, run at class creation """
         self.dry_run = dry_run
 
     def run(self):
-        """ do stuff here """
-        logger.info("info-level log message")
-        logger.debug("debug-level log message")
-        logger.error("error-level log message")
         print("run.")
 
 
@@ -77,10 +74,9 @@ def parse_args(argv):
                    help="dry-run - don't actually make any changes")
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
                    help='verbose output. specify twice for debug-level output.')
-
     args = p.parse_args(argv)
-
     return args
+
 
 def set_log_info():
     """set logger level to INFO"""
@@ -109,6 +105,7 @@ def set_log_level_format(level, format):
     formatter = logging.Formatter(fmt=format)
     logger.handlers[0].setFormatter(formatter)
     logger.setLevel(level)
+
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
