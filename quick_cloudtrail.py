@@ -12,6 +12,10 @@ Copyright 2014 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG:
+2020-01-24 Jason Antman <jason@jasonantman.com>:
+  - Implement argument to ignore specified userIdentity ARNs
+  - Add support for ignoring Read events
+
 2016-12-05 Jason Antman <jason@jasonantman.com>:
   - Performance optimization for many files: instead of reading in all files,
     deserializing, and then searching, read in and search files one at a time.
@@ -62,8 +66,10 @@ class QuickCloudtrail:
         elif verbose > 0:
             self.logger.setLevel(logging.INFO)
         self.logdir = logdir
-        self.files = [ f for f in os.listdir(logdir) if ( os.path.isfile(os.path.join(logdir, f)) and self.json_re.match(f) ) ]
-        self.logger.info("Found {c} CloudTrail log JSON files in {l}".format(c=len(self.files), l=logdir))
+        self.files = [f for f in os.listdir(logdir) if (os.path.isfile(
+            os.path.join(logdir, f)) and self.json_re.match(f))]
+        self.logger.info("Found {c} CloudTrail log JSON files in {l}".format(
+            c=len(self.files), l=logdir))
 
     def search_user(self, logs, users):
         """find all logs relating to the specified IAM user name substring(s)"""
@@ -170,7 +176,10 @@ class QuickCloudtrail:
         s = pformat(rec)
         return s
 
-    def search(self, search_type, query, error_only=False):
+    def search(
+        self, search_type, query, error_only=False, ignore_arns=[],
+        ignore_read=False
+    ):
         """wrapper around search functions"""
         func_name = "search_{s}".format(s=search_type)
         fn = getattr(self, func_name)
@@ -188,24 +197,33 @@ class QuickCloudtrail:
             if len(searchres) > 0:
                 self.logger.debug('Search found %d matches in %s',
                                   len(searchres), f)
-            res.extend(searchres)
+            for item in searchres:
+                if item.get('userIdentity', {}).get('arn') in ignore_arns:
+                    continue
+                if (
+                    error_only and
+                    'errorCode' not in item and
+                    'errorMessage' not in item
+                ):
+                    continue
+                if ignore_read and (
+                    item['eventName'].startswith('Describe') or
+                    item['eventName'].startswith('List') or
+                    item['eventName'].startswith('Get')
+                ):
+                    continue
+                res.append(item)
         self.logger.info('Parsed and searched %d records in %d files',
                          num_records, len(self.files))
         self.logger.debug("Search function {f} found {c} matches.".format(
             c=len(res),
             f=func_name))
-        if error_only:
-            tmp = []
-            for r in res:
-                if 'errorCode' in r or 'errorMessage' in r:
-                    tmp.append(r)
-        else:
-            tmp = res
-        if len(tmp) == 1:
+        if len(res) == 1:
             self.logger.info("Found 1 match.")
         else:
-            self.logger.info("Found {c} matches.".format(c=len(tmp)))
-        return tmp
+            self.logger.info("Found {c} matches.".format(c=len(res)))
+        return res
+
 
 def parse_args(argv):
     """
@@ -219,35 +237,48 @@ def parse_args(argv):
     for i in dir(QuickCloudtrail):
         if i.startswith('search_'):
             epil += "  {i} - {d}\n".format(i=i[7:],
-                                           d=getattr(QuickCloudtrail, i).__doc__)
-    p = argparse.ArgumentParser(description='Simple AWS CloudTrail JSON log searcher (searches *.json).',
-                                epilog=epil,
-                                formatter_class=argparse.RawTextHelpFormatter)
+                                           d=getattr(QuickCloudtrail,
+                                                     i).__doc__)
+    p = argparse.ArgumentParser(
+        description='Simple AWS CloudTrail JSON log searcher (searches *.json).',
+        epilog=epil,
+        formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('-v', '--verbose', dest='verbose', action='count', default=0,
                    help='verbose output. specify twice for debug-level output.')
     p.add_argument('-d', '--logdir', dest='logdir', action='store', type=str,
                    default=pwd,
                    help='directory containing .json logs (default ./)')
-    p.add_argument('-e', '--errors-only', dest='error_only', action='store_true',
+    p.add_argument('-e', '--errors-only', dest='error_only',
+                   action='store_true',
                    default=False,
                    help='return only records with an errorCode or errorMessage')
     p.add_argument('-j', '--json', dest='json', action='store_true',
-                   default=False, help='instead of pretty-printing output, print'
-                   ' output as JSON')
+                   default=False,
+                   help='instead of pretty-printing output, print'
+                        ' output as JSON')
     p.add_argument('-l', '--list-actions', dest='list_actions',
                    action='store_true', default=False,
                    help='only output a list of distinct AwsApiCall method names'
                         'from the matching results')
+    p.add_argument('-a', '--ignore-user-arn', dest='ignore_arns',
+                   action='append', default=[],
+                   help='userIdentity ARNs to ignore logs from; can be '
+                        'specified multiple times')
+    p.add_argument('-r', '--ignore-read', action='store_true', default=False,
+                   dest='ignore_read',
+                   help='Ignore eventNames that begin with Describe, List, or '
+                        'Get.')
     p.add_argument('search_type', metavar='SEARCH_TYPE', type=str,
                    help='type of search to perform')
     p.add_argument('query', metavar='QUERY', type=str, nargs='+',
                    help='Search query (can be specified multiple times). Any\n'
-                   'records with an appropriate value containing this string\n'
-                   '(case-insensitive) will be matched.')
+                        'records with an appropriate value containing this '
+                        'string\n(case-insensitive) will be matched.')
 
     args = p.parse_args(argv)
 
     return args
+
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
@@ -257,7 +288,10 @@ if __name__ == "__main__":
             s=args.search_type))
         raise SystemExit(1)
     qt = QuickCloudtrail(args.logdir, verbose=args.verbose)
-    res = qt.search(args.search_type, args.query, error_only=args.error_only)
+    res = qt.search(
+        args.search_type, args.query, error_only=args.error_only,
+        ignore_arns=args.ignore_arns, ignore_read=args.ignore_read
+    )
     if len(res) < 1:
         sys.stderr.write("0 matches found.")
         raise SystemExit(0)
