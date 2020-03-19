@@ -68,6 +68,8 @@ def main():
     parser.add_argument("--only-shortest", action='store_true',
             help="only show the shortest cycles. Example: if both A->C and A->B->C exist, only show the former. "
             "This vastly reduces the amount of output when analysing dependency issues.")
+    parser.add_argument("--print-labels", action='store_true',
+            help="print the node labels instead of their ids.")
     args = parser.parse_args()
 
     # read in the specified file, create a networkx DiGraph
@@ -76,6 +78,10 @@ def main():
     C = nx.simple_cycles(G)
     if args.only_shortest:
         C = remove_super_cycles(C)
+
+    if args.print_labels:
+        C = extract_node_labels(C, G)
+
     for i in C:
         print(i)
 
@@ -102,6 +108,15 @@ def remove_super_cycles(cycle_list):
         forward_index = forward_index + 1
     return cycle_list
 
+def extract_node_labels(C, G):
+    C_labels = []
+    for cycle in C:
+        cycle_labels = []
+        for node_id in cycle:
+            cycle_labels.append(G.nodes[node_id]['label'].replace('"',''))
+
+        C_labels.append(cycle_labels)
+    return C_labels
 
 if __name__ == "__main__":
     try:
