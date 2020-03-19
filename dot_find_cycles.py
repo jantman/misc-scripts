@@ -83,8 +83,9 @@ def main():
         C = extract_node_labels(C, G)
 
     for i in C:
-        print(i)
-
+        # append the first node again so that the cycle is complete
+        i.append(i[0])
+        print(" -> ".join(i))
 
 def remove_super_cycles(cycle_list):
     # sorting by length makes the search easier, because shorter cycles cannot be supercycles of longer ones
