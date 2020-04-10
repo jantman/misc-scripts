@@ -24,6 +24,9 @@ The latest version of this script can be found at:
 CHANGELOG
 ----------
 
+2020-04-10 Jason Antman <jason@jasonantman.com>:
+  - Fix bug in calculation of whether a self-test is needed.
+
 2018-12-31 Jason Antman <jason@jasonantman.com>:
   - add support for overriding or supplementing list of ignored attributes via
     -i and -I command-line arguments
@@ -294,12 +297,29 @@ class SmartChecker(object):
         hrs = int(dev.tests[0].hours)
         pwr_hours = self._dev_power_on_hours(dev)
         _type = smartctl_type[dev.interface]
+        logger.debug(
+            'Device /dev/%s tests[0].hours=%s, power_on_hours=%s, type=%s',
+            dev.name, hrs, pwr_hours, _type
+        )
         if _type not in ['ata', 'sat']:
             # no wrap-around; just return the value
+            logger.debug(
+                'Device is not ata or sat; time since last test is %s',
+                pwr_hours - hrs
+            )
             return pwr_hours - hrs
         if pwr_hours < 65536:
+            logger.debug(
+                'Power-on hours < 65536; time since last test is %s',
+                pwr_hours - hrs
+            )
             return pwr_hours - hrs
-        if hrs >= pwr_hours:
+        if hrs <= pwr_hours:
+            logger.debug(
+                'Time of last test <= power-on hours;'
+                ' time since last test is %s',
+                pwr_hours - hrs
+            )
             return pwr_hours - hrs
         multiplier = pwr_hours / 65536
         wrap = multiplier * 65536
@@ -323,6 +343,10 @@ class SmartChecker(object):
             if a is None:
                 continue
             if a.num == '9':
+                logger.debug(
+                    'Device %s attribute 9 (Power on Hours): %s',
+                    dev.name, a
+                )
                 return int(a.raw)
         raise RuntimeError("Unable to find attribute 9 for /dev/%s" % dev.name)
 
