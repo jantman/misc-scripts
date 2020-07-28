@@ -50,7 +50,7 @@ from io import StringIO
 from jenkins import Jenkins, JenkinsException
 
 try:
-    from urllib.parser import urlparse
+    from urllib.parse import urlparse
 except ImportError:
     from urlparse import urlparse
 
