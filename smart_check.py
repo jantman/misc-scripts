@@ -10,12 +10,13 @@ changes.
 Requirements
 -------------
 
-pySMART (`pip install pySMART`) == 0.3
+* Python3
+* pySMART (`pip install pySMART`) == 1.0
 
 License
 --------
 
-Copyright 2017 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2017-2020 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 The latest version of this script can be found at:
@@ -23,6 +24,10 @@ The latest version of this script can be found at:
 
 CHANGELOG
 ----------
+
+2020-08-04 Jason Antman <jason@jasonantman.com>:
+  - Python3 logging fix
+  - Update for pySMART 1.0
 
 2020-04-10 Jason Antman <jason@jasonantman.com>:
   - Fix bug in calculation of whether a self-test is needed.
@@ -54,7 +59,7 @@ from dictdiffer import diff
 FORMAT = "[%(asctime)s %(levelname)s %(filename)s:%(lineno)s - " \
          "%(funcName)20s() ] %(message)s"
 logging.basicConfig(level=logging.ERROR, format=FORMAT)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 IGNORE_ATTRS = [
     'Temperature_Celsius',
@@ -125,7 +130,7 @@ class SmartChecker(object):
                 logger.warning('Detected changes in data for /dev/%s (%s)',
                                dev.name, dev.serial)
                 diffs[dev.serial] = diff
-            if len(dev.tests) < 1:
+            if dev.tests is None or len(dev.tests) < 1:
                 continue
             if dev.tests[0].status != 'Completed without error':
                 self._errors.append('Device /dev/%s (%s) last self-test did '
@@ -145,7 +150,7 @@ class SmartChecker(object):
         if len(diffs) == 0 and len(self._errors) == 0:
             logger.info('No differences found for any devices. Exiting.')
             raise SystemExit(0)
-        for serial, diff in diffs.iteritems():
+        for serial, diff in diffs.items():
             print('Diff for device serial %s:' % serial)
             print("%s\n" % diff)
         for e in self._errors:
@@ -169,6 +174,8 @@ class SmartChecker(object):
         cmd = Popen(cmdline, shell=True,
             stdout=PIPE, stderr=PIPE)
         _stdout, _stderr = cmd.communicate()
+        _stdout = _stdout.decode()
+        _stderr = _stderr.decode()
         logger.debug('command STDOUT: %s', _stdout)
         logger.debug('command STDERR: %s', _stderr)
         if 'Auto Offline Data Collection: Enabled' in _stdout:
@@ -187,6 +194,8 @@ class SmartChecker(object):
         cmd = Popen(cmdline, shell=True,
                     stdout=PIPE, stderr=PIPE)
         _stdout, _stderr = cmd.communicate()
+        _stdout = _stdout.decode()
+        _stderr = _stderr.decode()
         logger.debug('command STDOUT: %s', _stdout)
         logger.debug('command STDERR: %s', _stderr)
         if 'SMART Automatic Offline Testing Enabled' in _stdout:
@@ -447,7 +456,7 @@ class SmartChecker(object):
         devices = []
         for dev in DeviceList().devices:
             logger.info('Discovered device: %s', dev)
-            if not dev.supports_smart:
+            if not dev.smart_capable:
                 logger.warning('Ignoring device that does not support SMART or '
                                'does not have SMART enabled: /dev/%s', dev.name)
                 continue
