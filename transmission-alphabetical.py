@@ -18,18 +18,20 @@ https://github.com/jantman/misc-scripts/blob/master/transmission-alphabetical.py
 Dependencies
 ------------
 
-* Python >= 3.4
-* transmission-rpc 1.0.0 (``pip install transmission-rpc==1.0.0``)
+* Python >= 3.4 (tested up to 3.9)
+* transmission-rpc 3.2.2 (``pip install transmission-rpc==3.2.2``)
 
 License
 -------
 
-Copyright 2018 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2018-2021 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
 
+2021-01-07 Jason Antman <jason@jasonantman.com>:
+  - Fix for transmission-rpc 3.2.2 on Python 3.9
 
 2019-04-22 Jason Antman <jason@jasonantman.com>:
   - Add -R option to remove finished/seeding torrents
@@ -42,7 +44,7 @@ import sys
 import argparse
 import logging
 
-from transmission_rpc import Client, DEFAULT_PORT
+from transmission_rpc import Client
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -61,7 +63,7 @@ class TransmissionPrioritizer(object):
             host, port, user
         )
         self._client = Client(
-            address=host, port=port, user=user, password=passwd
+            host=host, port=port, username=user, password=passwd
         )
         logger.debug('Connected to Transmission')
 
@@ -81,16 +83,20 @@ class TransmissionPrioritizer(object):
             'Checking files in torrent %d (%s)', t_id,
             torrent._get_name_string()
         )
-        files = self._client.get_files(ids=[t_id])[t_id]
-        logger.debug('Torrent has %d files', len(files))
+        files = {
+            x[0]: x[1] for x in enumerate(
+                self._client.get_files(ids=[t_id])[t_id]
+            )
+        }
+        logger.debug('Torrent has %d files: %s', len(files), files)
         incomplete = []
-        for _id in sorted(files.keys(), key=lambda x: files[x]['name']):
-            pct = (files[_id]['completed'] / files[_id]['size']) * 100
+        for _id in sorted(files.keys(), key=lambda x: files[x].name):
+            pct = (files[_id].completed / files[_id].size) * 100
             logger.debug(
                 'File %d: %s - %.2f%% complete - %s, priority %s', _id,
-                files[_id]['name'], pct,
-                'selected' if files[_id]['selected'] else 'unselected',
-                files[_id]['priority']
+                files[_id].name, pct,
+                'selected' if files[_id].selected else 'unselected',
+                files[_id].priority
             )
             if pct < 100:
                 incomplete.append(_id)
@@ -103,13 +109,13 @@ class TransmissionPrioritizer(object):
         data = {t_id: {}}
         for _id in files:
             data[t_id][_id] = {
-                'selected': files[_id]['selected'],
+                'selected': files[_id].selected,
                 'priority': 'high' if _id in selected else 'normal'
             }
         logger.info(
             'Ensuring high priority on first %d incomplete files: %s',
             len(selected), ', '.join([
-                '%d (%s)' % (x, files[x]['name']) for x in selected
+                '%d (%s)' % (x, files[x].name) for x in selected
             ])
         )
         logger.debug('set_files: %s', data)
@@ -157,8 +163,7 @@ def parse_args(argv):
                    default='127.0.0.1',
                    help='Transmission host/ip (default: 127.0.0.1)')
     p.add_argument('-p', '--port', dest='port', action='store', type=int,
-                   default=DEFAULT_PORT,
-                   help='Transmission port (default: %d)' % DEFAULT_PORT)
+                   default=9091, help='Transmission port (default: 9091)')
     p.add_argument('-u', '--username', dest='user', action='store', type=str,
                    default=None, help='Transmission username (default: None)')
     p.add_argument('-P', '--password', dest='passwd', action='store', type=str,
