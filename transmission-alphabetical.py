@@ -42,11 +42,7 @@ import sys
 import argparse
 import logging
 
-try:
-    from transmission_rpc import Client, DEFAULT_PORT
-except ImportError:
-    sys.stderr.write('ERROR: you must "pip install transmission-rpc"\n')
-    raise SystemExit(1)
+from transmission_rpc import Client, DEFAULT_PORT
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
