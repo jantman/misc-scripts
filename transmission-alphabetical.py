@@ -30,6 +30,9 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2021-04-11 Jason Antman <jason@jasonantman.com>:
+  - Division by zero fix
+
 2021-01-07 Jason Antman <jason@jasonantman.com>:
   - Fix for transmission-rpc 3.2.2 on Python 3.9
 
@@ -91,6 +94,10 @@ class TransmissionPrioritizer(object):
         logger.debug('Torrent has %d files: %s', len(files), files)
         incomplete = []
         for _id in sorted(files.keys(), key=lambda x: files[x].name):
+            if files[_id].size == 0:
+                logger.debug('File %s has zero size', files[_id].name)
+                incomplete.append(_id)
+                continue
             pct = (files[_id].completed / files[_id].size) * 100
             logger.debug(
                 'File %d: %s - %.2f%% complete - %s, priority %s', _id,
