@@ -30,6 +30,9 @@ Free for any use provided that patches are submitted back to me.
 CHANGELOG
 ---------
 
+2021-07-27 Jason Antman <jason@jasonantman.com>:
+  - Add support for asking for more peers on any torrent with 0 peers connected
+
 2021-04-11 Jason Antman <jason@jasonantman.com>:
   - Division by zero fix
 
@@ -70,12 +73,25 @@ class TransmissionPrioritizer(object):
         )
         logger.debug('Connected to Transmission')
 
-    def run(self, batch=2, rm_finished=False):
+    def run(self, batch=2, rm_finished=False, reannounce=False):
         logger.debug('Getting current torrents...')
         torrents = self._get_active_torrents()
         logger.info('Found %d active torrent(s)...', len(torrents))
         for t in torrents:
             self._set_file_priority(t, batch)
+            if reannounce and t._fields['peersConnected'].value < 1:
+                logger.debug(
+                    'Reannounce (ask for more peers) torrent %s (%s)',
+                    t.id, t.name
+                )
+                res = self._client._request(
+                    'torrent-reannounce', {}, [t.id], True
+                )
+                logger.info(
+                    'Reannounce (ask for more peers) torrent %s (%s); '
+                    'result: %s',
+                    t.id, t.name, res.get('result', 'unknown')
+                )
         logger.info('Done.')
         if rm_finished:
             self._rm_finished_torrents()
@@ -185,10 +201,14 @@ def parse_args(argv):
                    action='store_true', default=False,
                    help='Also remove seeding / 100%% complete torrents ('
                         'remove only the torrent, not data).')
+    p.add_argument('-r', '--reannounce', dest='reannounce', action='store_true',
+                   default=False,
+                   help='If no peers, reannounce (ask tracker for more)')
 
     args = p.parse_args(argv)
 
     return args
+
 
 def set_log_info():
     """set logger level to INFO"""
@@ -218,6 +238,7 @@ def set_log_level_format(level, format):
     logger.handlers[0].setFormatter(formatter)
     logger.setLevel(level)
 
+
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
 
@@ -229,4 +250,4 @@ if __name__ == "__main__":
 
     TransmissionPrioritizer(
         args.host, args.port, args.user, args.passwd
-    ).run(args.batch, rm_finished=args.rm_finished)
+    ).run(args.batch, rm_finished=args.rm_finished, reannounce=args.reannounce)
