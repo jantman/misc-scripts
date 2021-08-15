@@ -18,8 +18,9 @@ https://github.com/jantman/misc-scripts/blob/master/transmission-alphabetical.py
 Dependencies
 ------------
 
-* Python >= 3.4 (tested up to 3.9)
+* Python >= 3.6 (tested up to 3.9)
 * transmission-rpc 3.2.2 (``pip install transmission-rpc==3.2.2``)
+* humanize
 
 License
 -------
@@ -29,6 +30,10 @@ Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
+
+2021-08-25 Jason Antman <jason@jasonantman.com>:
+  - Require Python >= 3.6 for f-strings and humanize package
+  - Add support for identifying stalled torrents and removing them
 
 2021-07-27 Jason Antman <jason@jasonantman.com>:
   - Add support for asking for more peers on any torrent with 0 peers connected
@@ -49,6 +54,8 @@ CHANGELOG
 import sys
 import argparse
 import logging
+from datetime import datetime, timedelta
+from humanize import naturaldelta
 
 from transmission_rpc import Client
 
@@ -73,7 +80,10 @@ class TransmissionPrioritizer(object):
         )
         logger.debug('Connected to Transmission')
 
-    def run(self, batch=2, rm_finished=False, reannounce=False):
+    def run(
+        self, batch=2, rm_finished=False, reannounce=False, stalled_days=7,
+        prune_stalled_pct=25
+    ):
         logger.debug('Getting current torrents...')
         torrents = self._get_active_torrents()
         logger.info('Found %d active torrent(s)...', len(torrents))
@@ -95,6 +105,9 @@ class TransmissionPrioritizer(object):
         logger.info('Done.')
         if rm_finished:
             self._rm_finished_torrents()
+        self._find_stalled_downloads(
+            stalled_days=stalled_days, prune_stalled_pct=prune_stalled_pct
+        )
 
     def _set_file_priority(self, torrent, batch):
         t_id = torrent._fields['id'].value
@@ -144,14 +157,70 @@ class TransmissionPrioritizer(object):
         logger.debug('set_files: %s', data)
         self._client.set_files(data)
 
+    def _find_stalled_downloads(self, stalled_days=7, prune_stalled_pct=25):
+        now = datetime.now()
+        threshold = now - timedelta(days=stalled_days)
+        r = self._client.get_torrents()
+        stalled = []
+        for t in r:
+            if t.status in ['seeding']:
+                continue
+            if t.rateDownload > 0 or t.rateUpload > 0:
+                continue
+            if t.date_done is not None:
+                continue
+            try:
+                eta = t.eta
+            except ValueError:
+                eta = ''
+            if t.date_active >= threshold or t.date_added >= threshold:
+                continue
+            logger.debug(
+                'Torrent %s (%s) - %s, %.2f%% complete; eta=%s '
+                'rateUp=%s rateDown=%s; added=%s started=%s '
+                'active=%s done=%s',
+                t._fields['id'].value, t._get_name_string(),
+                t.status, t.progress, eta, t.rateUpload,
+                t.rateDownload, t.date_added, t.date_started, t.date_active,
+                t.date_done
+            )
+            active = 'NEVER'
+            if t.date_active.year > 1971:
+                active = naturaldelta(now - t.date_active) + ' ago'
+            print(
+                f'STALLED: Torrent {t._fields["id"].value} '
+                f'({t._get_name_string()}): '
+                f'{t.progress:.2f}% complete, '
+                f'added {naturaldelta(now - t.date_added)} ago, '
+                f'started {naturaldelta(now - t.date_started)} ago, '
+                f'active {active}'
+            )
+            stalled.append(t)
+            if t.progress < prune_stalled_pct:
+                logger.info(
+                    'PRUNING Stalled torrent: %s (%s)',
+                    t._fields['id'].value, t._get_name_string()
+                )
+                self._client.remove_torrent(
+                    t._fields['id'].value, delete_data=True
+                )
+        logger.debug('%d of %d torrents stalled', len(stalled), len(r))
+        return stalled
+
     def _get_active_torrents(self):
         r = self._client.get_torrents()
         active = []
         for t in r:
+            try:
+                eta = t.eta
+            except ValueError:
+                eta = ''
             logger.debug(
-                'Torrent %s (%s) - %s, %.2f%% complete',
+                'Torrent %s (%s) - %s, %.2f%% complete; eta=%s '
+                'queue_position=%s rateUp=%s rateDown=%s',
                 t._fields['id'].value, t._get_name_string(),
-                t.status, t.progress
+                t.status, t.progress, eta, t.queue_position, t.rateUpload,
+                t.rateDownload
             )
             if t.status in ['downloading', 'download pending']:
                 active.append(t)
@@ -204,7 +273,14 @@ def parse_args(argv):
     p.add_argument('-r', '--reannounce', dest='reannounce', action='store_true',
                    default=False,
                    help='If no peers, reannounce (ask tracker for more)')
-
+    p.add_argument('-s', '--stalled-days', dest='stalled_days', action='store',
+                   type=int, default=7,
+                   help='Consider torrents stalled after no activity for this '
+                        'number of days (default: 7)')
+    p.add_argument('-S', '--prune-stalled-pct', dest='prune_stalled_pct',
+                   action='store', type=float, default=25,
+                   help='Prune stalled torrents less than this percent '
+                        'complete (default: 25)')
     args = p.parse_args(argv)
 
     return args
