@@ -29,6 +29,12 @@ FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
 logger = logging.getLogger()
 
+for lname in ['boto3', 'botocore', 'urllib', 'urllib3']:
+    # suppress library logging below WARNING level
+    log = logging.getLogger(lname)
+    log.setLevel(logging.WARNING)
+    log.propagate = True
+
 
 class S3Reporter:
 
@@ -136,6 +142,8 @@ class S3Reporter:
         num_objects: int = 0
         size_bytes: int = 0
         for d in resp['MetricDataResults']:
+            if not d['Values']:
+                d['Values'] = [0]
             if d['Id'] == 'xNumberOfObjects':
                 num_objects = d['Values'][0]
             else:
