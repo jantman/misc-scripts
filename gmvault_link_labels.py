@@ -113,6 +113,9 @@ class GMVaultLabelLinker(object):
                 os.makedirs(dpath)
             src = os.path.join(self.db_path, monthdir, '%s.eml' % gm_id)
             link_name = os.path.join(dpath, '%s.eml' % gm_id)
+            if os.path.lexists(link_name) and not os.path.exists(link_name):
+                logger.debug('Removing broken symlink at %s', link_name)
+                os.unlink(link_name)
             if not os.path.exists(link_name):
                 logger.debug('Symlinking %s to %s', src, link_name)
                 os.symlink(src, link_name)
