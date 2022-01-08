@@ -47,21 +47,8 @@ import time
 import codecs
 from hashlib import md5
 
-try:
-    import requests
-except ImportError:
-    sys.stderr.write(
-        "Error importing requests - 'pip install requests'\n"
-    )
-    raise SystemExit(1)
-
-try:
-    from lxml import etree
-except ImportError:
-    sys.stderr.write(
-        "Error importing lxml - 'pip install lxml'\n"
-    )
-    raise SystemExit(1)
+import requests
+from lxml import etree
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
