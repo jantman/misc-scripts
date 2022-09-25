@@ -47,9 +47,7 @@ except ImportError:
     )
     raise SystemExit(1)
 
-FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-logging.basicConfig(level=logging.INFO, format=FORMAT)
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 # suppress logging from requests, used internally by TrelloApi
 requests_log = logging.getLogger("requests")
@@ -63,7 +61,8 @@ class TrelloEnsureCard:
         'cards': 'visible',
         'card_fields': 'all',
         'lists': 'all',
-        'list_fields': 'all'
+        'list_fields': 'all',
+        'labels': 'all',
     }
 
     def __init__(self, dry_run=False):
@@ -141,26 +140,22 @@ class TrelloEnsureCard:
 
     def labels_list(self, board, labels):
         """
-        Given a list of label names or colors, return a corresponding list of
-        the label colors for the given board.
+        Given a list of label names, return a corresponding list of the label
+        IDs for the given board.
 
         :param board: Trello board information
         :type board: dict
-        :param labels: list of label names or colors
+        :param labels: list of label names
         :type labels: list
-        :return: list of label colors
+        :return: list of label IDs
         :rtype: list
         """
-        bl = board['labelNames']
-        logger.debug("Board labels: %s", bl)
-        names_to_colors = { bl[x]: x for x in bl }
+        logger.debug("Board labels: %s", board['labels'])
+        names_to_ids = {x['name']: x['id'] for x in board['labels']}
         final = []
         for n in labels:
-            if n in bl:
-                final.append(n)
-                continue
-            if n in names_to_colors:
-                final.append(names_to_colors[n])
+            if n in names_to_ids:
+                final.append(names_to_ids[n])
                 continue
             raise Exception("Error: '%s' is not a valid label color or title"
                             " on the board." % n)
@@ -169,37 +164,38 @@ class TrelloEnsureCard:
 
     def ensure_card_labels(self, card, labels):
         """
-        Given a card dict and a list of label colors, ensure all those labels
+        Given a card dict and a list of label IDs, ensure all those labels
         and only those labels are set on the card.
 
         :param card: Trello card information
         :type card: dict
-        :param labels: list of label names or colors
+        :param labels: list of label IDs
         :type labels: list
         """
         logger.debug('Ensuring labels on card...')
+        logger.info('Labels: %s', card['labels'])
         # remove unwanted labels
-        have_colors = []
+        have_ids = []
         for l in card['labels']:
-            if l['color'] not in labels:
+            if l['id'] not in labels:
                 if self.dry_run:
                     logger.warning(
-                        'DRY RUN: Would delete %s label from card.', l['color']
+                        'DRY RUN: Would delete %s label from card.', l['id']
                     )
                 else:
-                    logger.info("Removing %s label from card", l['color'])
-                    self.trello.cards.delete_label_color(l['color'], card['id'])
+                    logger.info("Removing %s label from card", l['id'])
+                    self.trello.cards.delete_idLabel_idLabel(l['id'], card['id'])
             else:
-                have_colors.append(l['color'])
+                have_ids.append(l['id'])
         # add wanted labels
-        logger.debug('Card now has labels: %s', have_colors)
-        for color in labels:
-            if color not in have_colors:
+        logger.debug('Card now has labels: %s', have_ids)
+        for l_id in labels:
+            if l_id not in have_ids:
                 if self.dry_run:
-                    logger.warning('DRY RUN: Would add %s label to card', color)
+                    logger.warning('DRY RUN: Would add %s label to card', l_id)
                 else:
-                    logger.info('Adding %s label to card', color)
-                    self.trello.cards.new_label(card['id'], color)
+                    logger.info('Adding %s label to card', l_id)
+                    self.trello.cards.new_idLabel(card['id'], l_id)
         logger.debug('Done ensuring labels.')
 
     def ensure_card_checklists(self, desired_card, checklist_names):
@@ -299,8 +295,8 @@ def parse_args(argv):
     p.add_argument('-b', '--board', dest='BOARD_NAME', action='store', type=str,
                    help='board name', required=True)
     p.add_argument('-L', '--label', dest='labels', action='append', type=str,
-                   help='label name or color to set on card; can specify'
-                        'multiple times', default=[])
+                   help='label name to set on card; can specify multiple times',
+                   default=[])
     p.add_argument('-p', '--position', dest='pos', action='store', type=str,
                    default='bottom',
                    help='position in list to add the card at; "top", "bottom",'
@@ -325,7 +321,11 @@ def parse_args(argv):
         pass
     return args
 
+
 if __name__ == "__main__":
+    FORMAT = "[%(levelname)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+    logging.basicConfig(level=logging.INFO, format=FORMAT)
+    logger = logging.getLogger()
     args = parse_args(sys.argv[1:])
     if args.verbose > 1:
         logger.setLevel(logging.DEBUG)
