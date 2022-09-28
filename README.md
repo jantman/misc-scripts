@@ -123,7 +123,6 @@ file.
 * __trello_push_due_dates.py__ - Script to push all due dates on a Trello board (optionally in one list) back by N days.
 * __twitter_find_followed_not_in_list.py__ - Simple script to list anyone whom you're following but isn't in one of your lists.
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
-* __unifi_decrypt.py__ - Python script to decrypt and extract a UniFi `autobackup.unf` backup file.
 * __unifi_switch_to_statsd.py__ - Script to pull per-port stats from a UniFi switch and push them to statsd.
 * __VipToInternalHosts.pl__ - script to take F5 BigIp VIP address and display the members of the pool it is served by
 * __watch_all_my_github_repos.py__ - Python script to ensure you're watching all of your own GitHub repos.
