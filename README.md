@@ -124,6 +124,7 @@ file.
 * __twitter_find_followed_not_in_list.py__ - Simple script to list anyone whom you're following but isn't in one of your lists.
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
 * __unifi_switch_to_statsd.py__ - Script to pull per-port stats from a UniFi switch and push them to statsd.
+* __unifi_websocket_log.py__ - Script to connect to UniFi controller websocket server and print all events, for testing.
 * __VipToInternalHosts.pl__ - script to take F5 BigIp VIP address and display the members of the pool it is served by
 * __watch_all_my_github_repos.py__ - Python script to ensure you're watching all of your own GitHub repos.
 * __watch_circleci.py__ - Python script to watch a CircleCI build, optionally notify via Pushover, and optionally retry failed builds.
