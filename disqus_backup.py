@@ -18,7 +18,7 @@ The latest version of this script can be found at:
 <https://github.com/jantman/misc-scripts/blob/master/disqus_backup.py>
 """
 
-import anyjson
+import json
 import optparse
 import sys
 import os
@@ -86,9 +86,9 @@ def backup_disqus(short_name, key, secret, outfile, min_comments=5, verbose=Fals
 
     result['posts'] = all_posts
 
-    j = anyjson.serialize(result)
+
     with open(outfile, 'w') as fh:
-        fh.write(j)
+        json.dump(result, fh)
     sys.stderr.write("Output written to %s\n" % outfile)
     return True
 
