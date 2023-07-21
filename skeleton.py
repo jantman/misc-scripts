@@ -18,8 +18,10 @@ import sys
 import argparse
 import logging
 
-FORMAT: str = "[%(asctime)s %(levelname)s] %(message)s"
-logging.basicConfig(level=logging.WARNING, format=FORMAT)
+logging.basicConfig(
+    level=logging.WARNING,
+    format="[%(asctime)s %(levelname)s] %(message)s"
+)
 logger: logging.Logger = logging.getLogger()
 
 
@@ -59,9 +61,9 @@ def set_log_debug(l: logging.Logger):
     )
 
 
-def set_log_level_format(lgr: logging.Logger, level: int, format: str):
+def set_log_level_format(lgr: logging.Logger, level: int, fmt: str):
     """Set logger level and format."""
-    formatter = logging.Formatter(fmt=format)
+    formatter = logging.Formatter(fmt=fmt)
     lgr.handlers[0].setFormatter(formatter)
     lgr.setLevel(level)
 
