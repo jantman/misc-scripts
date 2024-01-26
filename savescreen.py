@@ -31,7 +31,6 @@
 ####################################################
 
 import subprocess
-import re
 import os
 from platform import node
 from datetime import datetime
@@ -41,6 +40,7 @@ import argparse
 import signal
 import fcntl
 from pathlib import Path
+from typing import Optional
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -66,62 +66,46 @@ class ScreenSaver:
             ptr = os.open(self.LOCKFILE_PATH, os.O_WRONLY)
             try:
                 fcntl.lockf(ptr, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                self._do_it()
-                try:
-                    os.close(ptr)
-                except Exception:
-                    pass
             except IOError:
                 logger.error(
                     'Unable to acquire lock on %s; already running?',
                     self.LOCKFILE_PATH, exc_info=True
                 )
+                return
+            self._do_it()
+            os.close(ptr)
         except TimeoutError:
             logger.error('Timeout at %d seconds', timeout)
         finally:
             signal.alarm(0)
 
-    def _get_windows(self, timeout: int = 25) -> str:
-        cmd = ['screen', '-Q', 'windows']
+    def _get_windows(self, timeout: int = 25) -> Optional[str]:
+        cmd = ['screen', '-Q', 'windows', '%n %t|']
         logger.debug('Running: %s', ' '.join(cmd))
         p = subprocess.run(
-            cmd,
-            check=True, stdout=subprocess.PIPE, timeout=timeout, text=True
+            cmd, stdout=subprocess.PIPE, timeout=timeout, text=True
         )
         logger.debug(
             'Command exited %d with STDOUT: %s', p.returncode, p.stdout
         )
+        if p.returncode != 0:
+            return None
         return p.stdout
 
     def _windowstr_to_dict(self, windowstr: str) -> dict:
         """This is really crap code, but it's been working for a decade..."""
         windows = {}
-        m = True
-        windowre = re.compile(r'(\s?(\d+)[-\*]?\$\s+(\S+)\s*)')
-        # loop over the window list, extract substrings matching a window specifier
-        while m is not None:
-            logger.debug("LOOP windowstr={w}=".format(w=windowstr))
-            m = windowre.match(windowstr)
-            if m is None:
-                if len(windows) == 0:
-                    logger.debug(
-                        "no match and no windows yet; trimming windowstr and continuing")
-                    windowstr = windowstr[1:]
-                    m = True
-                    continue
-                else:
-                    logger.debug(
-                        "no match, breaking out of loop - windowstr: {w}".format(
-                            w=windowstr))
-                    break
-            g = m.groups()
-            windowstr = windowstr[len(g[0]):]
-            logger.debug("found match: {a} = {b}".format(a=g[1], b=g[2]))
-            windows[int(g[1])] = g[2]
+        for window in windowstr.split('|'):
+            if window.strip() == '':
+                continue
+            parts = window.strip().split(' ', maxsplit=1)
+            windows[int(parts[0])] = parts[1]
         return windows
 
     def _do_it(self):
-        windowstr: str = self._get_windows()
+        windowstr: Optional[str] = self._get_windows()
+        if not windowstr:
+            return
         windows: dict = self._windowstr_to_dict(windowstr)
         logger.debug('Windows: %s', windows)
 
@@ -189,6 +173,4 @@ if __name__ == "__main__":
     # set logging level
     if args.verbose:
         set_log_debug(logger)
-    else:
-        set_log_info(logger)
     ScreenSaver().run(timeout=args.maxtime)
