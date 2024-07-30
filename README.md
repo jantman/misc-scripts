@@ -3,9 +3,9 @@ misc-scripts
 
 [![Project Status: Active - The project has reached a stable, usable state and is being actively developed.](http://www.repostatus.org/badges/0.1.0/active.svg)](http://www.repostatus.org/#active)
 
-This is a collection of miscellaneous scripts that I've written or modified
-for my use. Hopefully they may be of some use to others. When I get a chance,
-I'll try and update this readme with descriptions of all of the scripts.
+This is a collection of miscellaneous scripts that I've written or modified for my use. Hopefully they may be of some use to others. When I get a chance, I'll try and update this readme with descriptions of all of the scripts.
+
+**NOTE:** Some of these are over a decade old, and probably useless at this point. Please look at the commit date/history and use your judgment.
 
 Unless otherwise noted, these are distributed under the terms of the LICENSE
 file.
@@ -122,6 +122,7 @@ file.
 * __trello_push_due_dates.py__ - Script to push all due dates on a Trello board (optionally in one list) back by N days.
 * __twitter_find_followed_not_in_list.py__ - Simple script to list anyone whom you're following but isn't in one of your lists.
 * __ubiquiti-mac-acl/__ - PHP script and MySQL schema to manage the MAC ACL on Ubiquiti AirOS2 devices.
+* __unifi_backup.py__ - Script to back up UniFi Network Application (controller) config locally, and also decrypt and write markdown and JSON summaries of some of the more useful bits.
 * __unifi_switch_to_statsd.py__ - Script to pull per-port stats from a UniFi switch and push them to statsd.
 * __unifi_websocket_log.py__ - Script to connect to UniFi controller websocket server and print all events, for testing.
 * __VipToInternalHosts.pl__ - script to take F5 BigIp VIP address and display the members of the pool it is served by
