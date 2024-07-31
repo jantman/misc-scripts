@@ -162,6 +162,16 @@ class GlpiDockerReport:
         return r.json()
 
     def run(self):
+        self._get_glpi_data()
+        print(json.dumps(
+            {
+                self._computer_names[x]: self._containers_by_comp[x]
+                for x in sorted(self._containers_by_comp.keys())
+            },
+            sort_keys=True, indent=4
+        ))
+
+    def _get_glpi_data(self):
         comp: dict
         for comp in self._api_get_json('Computer/?expand_dropdowns=true'):
             if comp.get('is_deleted', 0) == 1:
@@ -180,13 +190,6 @@ class GlpiDockerReport:
             self._computer_names[comp['id']] = comp['name']
             self._containers_by_comp[comp['id']] = {}
             self._do_computer(comp['id'])
-        print(json.dumps(
-            {
-                self._computer_names[x]: self._containers_by_comp[x]
-                for x in sorted(self._containers_by_comp.keys())
-            },
-            sort_keys=True, indent=4
-        ))
 
     def _do_computer(self, comp_id: int):
         vm: dict
