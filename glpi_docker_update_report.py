@@ -61,7 +61,7 @@ import argparse
 import logging
 from typing import Optional, Dict, List
 from time import time, sleep
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import re
 from collections import defaultdict
 from base64 import b64encode
@@ -312,7 +312,10 @@ def td(s):
 
 
 class GlpiDockerReport:
+
     TOKEN_FILE: str = '.glpi_token.json'
+
+    CR_HEADER: re.Pattern = re.compile(r'^(\d+)-(\d+)/(\d+)$')
 
     def __init__(self):
         if (api_url := os.environ.get('GLPI_API_URL')) is None:
@@ -351,6 +354,7 @@ class GlpiDockerReport:
         self._login()
         self.computers: Dict[str, Computer] = {}
         self.images: Dict[str, Image] = {}
+        self.old_computers: List[str] = []
 
     def _get_image(self, name: str) -> Image:
         if name not in self.images:
@@ -416,6 +420,17 @@ class GlpiDockerReport:
         url = self._api_url + path
         logger.debug('GET: %s', url)
         r = self._sess.get(url)
+        logger.debug(
+            'Got HTTP %d with %d bytes content; headers=%s',
+            r.status_code, len(r.content), r.headers
+        )
+        if m := self.CR_HEADER.match(r.headers.get('Content-Range', '')):
+            if int(m.group(2)) + 1 != int(m.group(3)):
+                raise NotImplementedError(
+                    f'ERROR: GLPI API responded with Content-Range of '
+                    f'{r.headers.get("Content-Range")}; pagination not '
+                    f'implemented!'
+                )
         r.raise_for_status()
         return r.json()
 
@@ -481,6 +496,11 @@ class GlpiDockerReport:
         html += '<h2>Generated at '
         html += datetime.now(timezone.utc).astimezone().strftime('%c %Z')
         html += '</h2>\n'
+        if self.old_computers:
+            html += (
+                '<p>Ignored the following hosts with last update over '
+                f'7 days ago: {", ".join(sorted(self.old_computers))}</p>\n'
+            )
         html += ('<table style="border: 1px solid black; '
                  'border-collapse: collapse;">\n')
         html += '<thead><tr>'
@@ -501,7 +521,10 @@ class GlpiDockerReport:
             else:
                 html += td('&nbsp;')
             html += td(f'<a href="{row["TagLink"]}">{row["Tag"]}</a>')
-            html += td(naturaldelta(NOW - row['Date']))
+            if row['Date'] == UNKNOWN_DATE:
+                html += td('unknown')
+            else:
+                html += td(naturaldelta(NOW - row['Date']))
             html += td(
                 '; '.join([
                     f'{x} ({", ".join(sorted(row["Hosts"][x]))})'
@@ -548,15 +571,27 @@ class GlpiDockerReport:
                     comp['id'], comp['name']
                 )
                 continue
+            last_checkin: datetime = parse(comp['last_inventory_update'])
+            last_checkin = last_checkin.replace(tzinfo=NOW.tzinfo)
+            if NOW - last_checkin > timedelta(days=7):
+                logger.error(
+                    'Ignoring computer %d (%s) with last update at %s',
+                    comp['id'], comp['name'], comp['last_inventory_update']
+                )
+                self.old_computers.append(comp['name'])
+                continue
             logger.info('Computer %d (%s)', comp['id'], comp['name'])
             self._do_computer(comp['id'], comp['name'])
 
     def _do_computer(self, comp_id: int, comp_name: str):
         comp = Computer(comp_id, comp_name)
         self.computers[comp_name] = comp
+        vms = self._api_get_json(
+            f'Computer/{comp_id}/ComputerVirtualMachine/'
+            f'?expand_dropdowns=true&range=0-1000'
+        )
         vm: dict
-        for vm in self._api_get_json(
-                f'Computer/{comp_id}/ComputerVirtualMachine/?expand_dropdowns=true'):
+        for vm in vms:
             if vm.get('virtualmachinetypes_id') != 'docker':
                 logger.debug(
                     'Skip VM with type %s: %d name=%s (comment %s)',
