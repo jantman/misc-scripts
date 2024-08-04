@@ -44,10 +44,11 @@ https://github.com/jantman/misc-scripts/blob/master/glpi_docker_update_report.py
 Dependencies
 ------------
 
-Python 3+
-requests
-python-dateutil
-humanize
+Python 3.11 or newer (tested with 3.12)
+requests (tested with 2.32.3)
+python-dateutil (tested with 2.9.0)
+humanize (tested with 4.9.0)
+github3.py (tested with 4.0.1)
 
 License
 -------
@@ -59,16 +60,18 @@ import os
 import sys
 import argparse
 import logging
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from time import time, sleep
 from datetime import datetime, timezone, timedelta
 import re
 from collections import defaultdict
-from base64 import b64encode
+import json
 
 import requests
 from dateutil.parser import parse
 from humanize import naturaldelta
+from github3 import GitHub
+
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -81,6 +84,8 @@ SEMVER_ANYWHERE_RE: re.Pattern = re.compile(r'^.*\d+\.\d+\.\d+.*$')
 UNKNOWN_DATE: datetime = datetime.fromtimestamp(1, tz=timezone.utc)
 
 NOW: datetime = datetime.now(tz=timezone.utc)
+
+GH: GitHub = GitHub(token=os.environ['GITHUB_TOKEN'])
 
 
 class Image:
@@ -199,6 +204,19 @@ class DockerHubImage(Image):
             iver.tag_date = self.tag_dates[iver.tag]
 
 
+class GhcrContainer:
+
+    def __init__(self, data: dict):
+        self._raw: dict = data
+        self._id: int = data['id']
+        self.created_at: datetime = parse(data['created_at'])
+        self.updated_at: datetime = parse(data['updated_at'])
+        self.date: datetime = max(self.created_at, self.updated_at)
+        self.package_html_url: str = data['package_html_url']
+        self.html_url: str = data['html_url']
+        self.tags: List[str] = data['metadata']['container']['tags']
+
+
 class GhcrImage(Image):
 
     @property
@@ -210,38 +228,72 @@ class GhcrImage(Image):
         return (f'https://github.com/{self.namespace}/{self.repository}/'
                 f'releases/tag/{tag}')
 
-    def update(self):
-        logger.error('ERROR: ghcr.io support not implemented!')
-        return  # @TODO implement me
+    def _gh_json(self, *url_parts, status_code: int = 200) -> Union[Dict, List]:
+        url = GH._build_url(*url_parts)
+        logger.debug('GHCR GET: %s', url)
+        j = json = GH._json(GH._get(url), status_code)
+        return j
+
+    def _get_tagged_containers(self, ownertype) -> List[GhcrContainer]:
+        result: List[GhcrContainer] = []
+        url = GH._build_url(
+            ownertype, self.namespace, 'packages', 'container',
+            self.repository, 'versions'
+        )
+        logger.debug('GHCR Iterate GET: %s', url)
+        count: int = 0
+        cont: GhcrContainer
+        for cont in GH._iter(
+            -1, url, GhcrContainer,
+            params={"sort": None, "direction": None},
+            etag=None
+        ):
+            if cont.tags:
+                result.append(cont)
+            count += 1
         logger.info(
-            'Updating tag info for Docker Hub image: %s', self.name
+            'Found tags on %d of %d versions', len(result), count
         )
-        tokurl = f'https://ghcr.io/token?scope=repository:{self.namespace}/{self.repository}:pull'
-        logger.debug('GET %s', tokurl)
-        tok = requests.get(tokurl)
-        tok.raise_for_status()
-        token = tok.json()['token']
-        url = f'https://ghcr.io/v2/{self.namespace}/{self.repository}/tags/list'
-        r = requests.get(
-            url,
-            headers={'Authorization': f'Bearer {token}'}
+        return result
+
+    def update(self):
+        logger.info('Updating GHCR package: %s', self.name)
+        pkg: dict = self._gh_json(
+            'users', self.namespace, 'packages', 'container', self.repository
         )
-        j = r.json()
-        logger.debug('Response: %s', j)
-        tags = sorted(j['tags'])
-        print(r.json())
-        raise NotImplementedError()
-        logger.info('Found %d tags', len(result))
-        self.tag_dates = {
-            x['name']: parse(x['tag_last_pushed']) for x in result
-        }
-        # super().update()
+        logger.debug(
+            'Package %s (ID %s) updated at %s; has %s versions',
+            pkg['name'], pkg['id'], pkg['updated_at'], pkg['version_count']
+        )
+        ownertype: str = pkg['owner']['type']
+        logger.debug(
+            'GHCR %s/%s owner is a %s',
+            self.namespace, self.repository, ownertype
+        )
+        stub: str
+        if ownertype == 'Organization':
+            stub = 'orgs'
+        elif ownertype == 'User':
+            stub = 'users'
+        else:
+            raise RuntimeError(
+                f'ERROR: Unknown repository owner type: {ownertype}'
+            )
+        tagged_versions: List[GhcrContainer] = self._get_tagged_containers(stub)
+        cont: GhcrContainer
+        for cont in sorted(tagged_versions, key=lambda x: x.date, reverse=True):
+            if not self.newest_tag:
+                self.newest_tag = cont.tags[0]
+            for tag in cont.tags:
+                if SEMVER_ANYWHERE_RE.match(tag) and not self.newest_version_tag:
+                    self.newest_version_tag = tag
+                self.tag_dates[tag] = cont.date
 
 
 class GcrImage(Image):
 
     def update(self):
-        logger.error('ERROR: ghcr.io support not implemented!')
+        logger.error('ERROR: gcr.io support not implemented!')
         pass
 
 
@@ -450,8 +502,6 @@ class GlpiDockerReport:
         img: Image
         rows: List[Dict] = []
         for img in sorted(self.images.values(), key=lambda x: x.name):
-            #if img.name == 'ghcr.io/onedr0p/exportarr':  # @TODO REMOVE ME
-            #if img.name == 'ghcr.io/jantman/docker-glpi':  # @TODO REMOVE ME
             img.update()
             rows.extend(self._rows_for_image(img))
         html = self._generate_html(rows)
