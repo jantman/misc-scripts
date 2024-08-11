@@ -65,7 +65,9 @@ from time import time, sleep
 from datetime import datetime, timezone, timedelta
 import re
 from collections import defaultdict
-import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 import requests
 from dateutil.parser import parse
@@ -486,7 +488,36 @@ class GlpiDockerReport:
         r.raise_for_status()
         return r.json()
 
+    def _send_email(self, html: str) -> None:
+        addr = os.environ['EMAIL_ADDR']
+        message = MIMEMultipart("alternative")
+        message["Subject"] = "GLPI Docker Report"
+        message["From"] = addr
+        message["To"] = addr
+        message.attach(MIMEText(html, "html"))
+        host, port = os.environ['SMTP_HOST'].split(':')
+        port = int(port)
+        logger.debug('Connecting to SMTP on %s:%d as %s', host, port, addr)
+        s = smtplib.SMTP(host, port)
+        s.ehlo()
+        s.starttls()
+        s.ehlo()
+        s.login(addr, os.environ['SMTP_PASSWORD'])
+        logger.info('Sending mail From=%s To=%s', addr, addr)
+        s.sendmail(addr, addr, message.as_string())
+        logger.info('EMail sent.')
+        s.quit()
+
     def run(self, html_file_only: bool = False):
+        if not html_file_only:
+            email_vars = [
+                "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_ADDR"
+            ]
+            if not set(email_vars).issubset(set(os.environ.keys())):
+                raise RuntimeError(
+                    f'ERROR: --html not specified, but not all email env vars '
+                    f'are set. To send email, please set: {email_vars}'
+                )
         self._get_glpi_data()
         name: str
         comp: Computer
@@ -510,7 +541,7 @@ class GlpiDockerReport:
             fh.write(html)
         if html_file_only:
             return
-        raise NotImplementedError()
+        self._send_email(html)
 
     def _rows_for_image(self, img: Image) -> List[Dict]:
         result = []
