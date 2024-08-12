@@ -511,6 +511,11 @@ class UniFiBackup:
                 json={'cmd': "list-backups"},
                 cookies=cookies, verify=False
             )
+            logger.debug(
+                'Request to /api/s/default/cmd/backup returned HTTP %d '
+                'with headers %s and content: %s', r.status_code,
+                r.headers, r.text
+            )
             r.raise_for_status()
             j = r.json()
             assert j['meta']['rc'] == 'ok'
