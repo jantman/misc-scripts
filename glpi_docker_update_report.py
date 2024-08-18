@@ -218,6 +218,12 @@ class GhcrContainer:
         self.html_url: str = data['html_url']
         self.tags: List[str] = data['metadata']['container']['tags']
 
+    def __str__(self) -> str:
+        return (
+            f'GhcrContainer(id={self._id}, created_at={self.created_at}, '
+            f'updated_at={self.updated_at}, tags={self.tags})'
+        )
+
 
 class GhcrImage(Image):
 
@@ -290,6 +296,17 @@ class GhcrImage(Image):
                 if SEMVER_ANYWHERE_RE.match(tag) and not self.newest_version_tag:
                     self.newest_version_tag = tag
                 self.tag_dates[tag] = cont.date
+                if tag in self.image_versions:
+                    self.image_versions[tag].tag_date = cont.date
+        logger.info(
+            'Found newest tag as: %s at %s',
+            self.newest_tag, self.tag_dates[self.newest_tag]
+        )
+        logger.debug(
+            'Image %s newest_tag=%s tag_dates=%s tagged_versions=%s',
+            self.name, self.newest_tag, self.tag_dates,
+            [str(x) for x in tagged_versions]
+        )
 
 
 class GcrImage(Image):
@@ -508,7 +525,7 @@ class GlpiDockerReport:
         logger.info('EMail sent.')
         s.quit()
 
-    def run(self, html_file_only: bool = False):
+    def run(self, html_file_only: bool = False, skip_names: List[str] = []):
         if not html_file_only:
             email_vars = [
                 "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_ADDR"
@@ -518,7 +535,7 @@ class GlpiDockerReport:
                     f'ERROR: --html not specified, but not all email env vars '
                     f'are set. To send email, please set: {email_vars}'
                 )
-        self._get_glpi_data()
+        self._get_glpi_data(skip_names=skip_names)
         name: str
         comp: Computer
         for name in sorted(self.computers.keys()):
@@ -535,7 +552,7 @@ class GlpiDockerReport:
         for img in sorted(self.images.values(), key=lambda x: x.name):
             img.update()
             rows.extend(self._rows_for_image(img))
-        html = self._generate_html(rows)
+        html = self._generate_html(rows, skip_names)
         logger.info('Writing report to: glpi_docker_update_report.html')
         with open('glpi_docker_update_report.html', 'w') as fh:
             fh.write(html)
@@ -568,7 +585,7 @@ class GlpiDockerReport:
             })
         return result
 
-    def _generate_html(self, rows: List[Dict]) -> str:
+    def _generate_html(self, rows: List[Dict], skip_names: List[str]) -> str:
         html = ('<html><head>'
                 '<title>GLPI Docker Update Report</title>'
                 '</head>\n')
@@ -581,6 +598,11 @@ class GlpiDockerReport:
             html += (
                 '<p>Ignored the following hosts with last update over '
                 f'7 days ago: {", ".join(sorted(self.old_computers))}</p>\n'
+            )
+        if skip_names:
+            html += (
+                '<p>Skipped the following hosts based on command line argument:'
+                f' {", ".join(sorted(skip_names))}</p>\n'
             )
         html += ('<table style="border: 1px solid black; '
                  'border-collapse: collapse;">\n')
@@ -637,7 +659,7 @@ class GlpiDockerReport:
         html += '</table></body></html>\n'
         return html
 
-    def _get_glpi_data(self):
+    def _get_glpi_data(self, skip_names: List[str]):
         comp: dict
         for comp in self._api_get_json('Computer/?expand_dropdowns=true'):
             if comp.get('is_deleted', 0) == 1:
@@ -649,6 +671,12 @@ class GlpiDockerReport:
             if comp.get('is_template', 0) == 1:
                 logger.debug(
                     'Skip deleted computer %d (%s)',
+                    comp['id'], comp['name']
+                )
+                continue
+            if comp['name'] in skip_names:
+                logger.info(
+                    'Skip computer based on argument %d (%s)',
                     comp['id'], comp['name']
                 )
                 continue
@@ -714,6 +742,11 @@ def parse_args(argv):
         '-H', '--html', dest='html', action='store_true',
         default=False, help='Just write local HTML report and exit'
     )
+    p.add_argument(
+        '-S', '--skip', dest='skip_names', action='append',
+        default=[], help='Skip these computer names (can be specified '
+                         'multiple times)'
+    )
     args = p.parse_args(argv)
     return args
 
@@ -753,4 +786,4 @@ if __name__ == "__main__":
     else:
         set_log_info(logger)
 
-    GlpiDockerReport().run(html_file_only=args.html)
+    GlpiDockerReport().run(html_file_only=args.html, skip_names=args.skip_names)
