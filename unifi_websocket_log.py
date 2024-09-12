@@ -12,12 +12,13 @@ https://github.com/Kane610/aiounifi/blob/master/aiounifi/__main__.py
 REQUIREMENTS:
 
 Python >= 3.7 (written for 3.10)
-aiounifi package (written for version 35)
+aiounifi package (written for version 80)
 """
 
 import sys
 import argparse
 import logging
+from time import time
 
 import asyncio
 from typing import TYPE_CHECKING, Any, Callable
@@ -29,7 +30,7 @@ import aiounifi
 from aiounifi.controller import Controller
 
 from ssl import SSLContext, CERT_NONE, create_default_context
-from aiounifi.websocket import WebsocketSignal, WebsocketState
+from aiounifi.models.configuration import Configuration
 from aiounifi.models.message import Message, MessageKey
 from aiounifi.models.event import Event, EventKey
 
@@ -37,22 +38,21 @@ FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
 logger = logging.getLogger()
 
-
-def signalling_callback(
-    signal: WebsocketSignal, data: dict[str, Any] | WebsocketState
-) -> None:
-    """Receive and print events from websocket."""
-    logger.warning('SIGNAL_CALLBACK %s: %s (%s)', signal, data, type(data))
+fhand = logging.FileHandler('/tmp/jantman/unifi.%s.log' % int(time()))
+fhand.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s'))
+logger.addHandler(fhand)
 
 
 def message_callback(msg: Message):
-    logger.warning('MESSAGE_CALLBACK: key=%s', msg.meta.message)
+    logger.warning('MESSAGE_CALLBACK: for type %s: %s', msg.meta.message.value, msg.data)
+    sys.stdout.flush()
 
 
 def event_callback(evt: Event):
     logger.warning(
-        'EVENT_CALLBACK: key=%s subsystem=%s', evt.key, evt.subsystem
+        'EVENT_CALLBACK: for type %s: %s', evt.key.value, vars(evt)
     )
+    sys.stdout.flush()
 
 
 async def unifi_controller(
@@ -63,24 +63,23 @@ async def unifi_controller(
     site: str,
     session: aiohttp.ClientSession,
     sslcontext: SSLContext | None,
-    callback: Callable[[WebsocketSignal, dict[str, Any] | WebsocketState], None],
 ) -> Controller | None:
     """Set up UniFi controller and verify credentials."""
     controller = Controller(
-        host,
-        username=username,
-        password=password,
-        port=port,
-        site=site,
-        websession=session,
-        sslcontext=sslcontext,
-        callback=callback,
+        Configuration(
+            session=session,
+            host=host,
+            username=username,
+            password=password,
+            port=port,
+            site=site,
+            ssl_context=sslcontext if sslcontext is not None else False,
+        )
     )
     controller.messages.subscribe(message_callback)
     controller.events.subscribe(event_callback)
     try:
         async with async_timeout.timeout(10):
-            await controller.check_unifi_os()
             await controller.login()
         return controller
     except aiounifi.LoginRequired:
@@ -118,20 +117,13 @@ async def main(
         site=site,
         session=websession,
         sslcontext=sslcontext,
-        callback=signalling_callback,
     )
     if not controller:
         logger.error("Couldn't connect to UniFi controller")
         await websession.close()
         return
-    logger.debug('Initializing')
-    await controller.initialize()
-    logger.debug('Getting sites')
-    await controller.sites()
-    logger.debug('Getting site description')
-    await controller.site_description()
     logger.debug('Starting websocket')
-    controller.start_websocket()
+    ws_task = asyncio.create_task(controller.start_websocket())
     logger.debug('Loop on websocket...')
     try:
         while True:
