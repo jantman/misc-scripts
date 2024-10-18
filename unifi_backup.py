@@ -209,9 +209,9 @@ class UniFiBackup:
         s = '\n## Traffic Rules\n\n'
         for k, r in sorted(rules.items()):
             data[str(r['_id'])] = self._do_traffic_rule(r, networks, client_macs)
-            s += '* ' + f'``{r["description"]}``: '
+            s += '* ' + f'``{r["description"]}``: (id {str(r["_id"])}) '
             s += self._sorted_dict_repr(
-                data[str(r['_id'])], ignore_keys=['name', '_id', '_sources', '_targets']
+                data[str(r['_id'])], ignore_keys=['name', '_sources', '_targets']
             ) + '\n'
         return s, data
 
