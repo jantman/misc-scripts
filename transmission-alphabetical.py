@@ -25,11 +25,14 @@ Dependencies
 License
 -------
 
-Copyright 2018-2021 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
+Copyright 2018-2025 Jason Antman <jason@jasonantman.com> <http://www.jasonantman.com>
 Free for any use provided that patches are submitted back to me.
 
 CHANGELOG
 ---------
+
+2025-01-28 Jason Antman <jason@jasonantman.com>:
+  - Update to use transmission-rpc 7.0.11 for python3.13 compatibility
 
 2021-08-25 Jason Antman <jason@jasonantman.com>:
   - Require Python >= 3.6 for f-strings and humanize package
@@ -89,7 +92,7 @@ class TransmissionPrioritizer(object):
         logger.info('Found %d active torrent(s)...', len(torrents))
         for t in torrents:
             self._set_file_priority(t, batch)
-            if reannounce and t._fields['peersConnected'].value < 1:
+            if reannounce and t.fields['peersConnected'] < 1:
                 logger.debug(
                     'Reannounce (ask for more peers) torrent %s (%s)',
                     t.id, t.name
@@ -110,32 +113,28 @@ class TransmissionPrioritizer(object):
         )
 
     def _set_file_priority(self, torrent, batch):
-        t_id = torrent._fields['id'].value
+        t_id = torrent.fields['id']
         logger.info(
             'Checking files in torrent %d (%s)', t_id,
-            torrent._get_name_string()
+            torrent.name
         )
-        files = {
-            x[0]: x[1] for x in enumerate(
-                self._client.get_files(ids=[t_id])[t_id]
-            )
-        }
+        files = torrent.get_files()
         logger.debug('Torrent has %d files: %s', len(files), files)
         incomplete = []
-        for _id in sorted(files.keys(), key=lambda x: files[x].name):
-            if files[_id].size == 0:
-                logger.debug('File %s has zero size', files[_id].name)
-                incomplete.append(_id)
+        for file in sorted(files, key=lambda x: x.name):
+            if file.size == 0:
+                logger.debug('File %s has zero size', file.name)
+                incomplete.append(file.id)
                 continue
-            pct = (files[_id].completed / files[_id].size) * 100
+            pct = (file.completed / file.size) * 100
             logger.debug(
-                'File %d: %s - %.2f%% complete - %s, priority %s', _id,
-                files[_id].name, pct,
-                'selected' if files[_id].selected else 'unselected',
-                files[_id].priority
+                'File %d: %s - %.2f%% complete - %s, priority %s', file.id,
+                file.name, pct,
+                'selected' if file.selected else 'unselected',
+                file.priority
             )
             if pct < 100:
-                incomplete.append(_id)
+                incomplete.append(file.id)
         logger.debug('%d files in torrent are incomplete', len(incomplete))
         if len(incomplete) > batch:
             selected = incomplete[:batch]
@@ -179,7 +178,7 @@ class TransmissionPrioritizer(object):
                 'Torrent %s (%s) - %s, %.2f%% complete; eta=%s '
                 'rateUp=%s rateDown=%s; added=%s started=%s '
                 'active=%s done=%s',
-                t._fields['id'].value, t._get_name_string(),
+                t.fields['id'], t.name,
                 t.status, t.progress, eta, t.rateUpload,
                 t.rateDownload, t.date_added, t.date_started, t.date_active,
                 t.date_done
@@ -188,8 +187,8 @@ class TransmissionPrioritizer(object):
             if t.date_active.year > 1971:
                 active = naturaldelta(now - t.date_active) + ' ago'
             print(
-                f'STALLED: Torrent {t._fields["id"].value} '
-                f'({t._get_name_string()}): '
+                f'STALLED: Torrent {t.fields["id"]} '
+                f'({t.name}): '
                 f'{t.progress:.2f}% complete, '
                 f'added {naturaldelta(now - t.date_added)} ago, '
                 f'started {naturaldelta(now - t.date_started)} ago, '
@@ -199,10 +198,10 @@ class TransmissionPrioritizer(object):
             if t.progress < prune_stalled_pct:
                 logger.info(
                     'PRUNING Stalled torrent: %s (%s)',
-                    t._fields['id'].value, t._get_name_string()
+                    t.fields['id'], t.name
                 )
                 self._client.remove_torrent(
-                    t._fields['id'].value, delete_data=True
+                    t.fields['id'], delete_data=True
                 )
         logger.debug('%d of %d torrents stalled', len(stalled), len(r))
         return stalled
@@ -218,9 +217,9 @@ class TransmissionPrioritizer(object):
             logger.debug(
                 'Torrent %s (%s) - %s, %.2f%% complete; eta=%s '
                 'queue_position=%s rateUp=%s rateDown=%s',
-                t._fields['id'].value, t._get_name_string(),
-                t.status, t.progress, eta, t.queue_position, t.rateUpload,
-                t.rateDownload
+                t.fields['id'], t.name,
+                t.status, t.progress, eta, t.queue_position, t.rate_upload,
+                t.rate_download
             )
             if t.status in ['downloading', 'download pending']:
                 active.append(t)
@@ -234,16 +233,16 @@ class TransmissionPrioritizer(object):
         for t in r:
             logger.debug(
                 'Torrent %s (%s) - %s, %.2f%% complete',
-                t._fields['id'].value, t._get_name_string(),
+                t.fields['id'], t.name,
                 t.status, t.progress
             )
             if t.status != 'seeding' or t.progress != 100:
                 continue
             logger.info(
                 'Removing finished/seeding torrent: %s (%s)',
-                t._fields['id'].value, t._get_name_string()
+                t.fields['id'], t.name
             )
-            self._client.remove_torrent(t._fields['id'].value)
+            self._client.remove_torrent(t.fields['id'])
 
 
 def parse_args(argv):
