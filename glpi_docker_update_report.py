@@ -309,6 +309,18 @@ class GhcrImage(Image):
         )
 
 
+class LscrImage(GhcrImage):
+
+    BASE_URL = "https://hub.linuxserver.io/v2"
+
+    @property
+    def link(self) -> str:
+        return f'https://docs.linuxserver.io/images/docker-{self.repository}/'
+
+    def link_for_tag(self, tag: str) -> str:
+        return f'https://github.com/{self.namespace}/docker-{self.repository}/releases/tag/{tag}'
+
+
 class GcrImage(Image):
 
     def update(self):
@@ -325,6 +337,9 @@ def get_image(name: str) -> Image:
     if name.startswith('gcr.io/'):
         cls = GcrImage
         name = name[7:]
+    if name.startswith('lscr.io/'):
+        cls = LscrImage
+        name = name[8:]
     if '/' in name:
         try:
             namespace, repository = name.split('/')
@@ -525,7 +540,7 @@ class GlpiDockerReport:
         logger.info('EMail sent.')
         s.quit()
 
-    def run(self, html_file_only: bool = False, skip_names: List[str] = []):
+    def run(self, html_file_only: bool = False, skip_names: List[str] = [], skip_images: List[str] = []):
         if not html_file_only:
             email_vars = [
                 "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_ADDR"
@@ -550,6 +565,9 @@ class GlpiDockerReport:
         img: Image
         rows: List[Dict] = []
         for img in sorted(self.images.values(), key=lambda x: x.name):
+            if img.name in skip_images:
+                logger.info('Skipping image: %s', img.name)
+                continue
             img.update()
             rows.extend(self._rows_for_image(img))
         html = self._generate_html(rows, skip_names)
@@ -747,6 +765,10 @@ def parse_args(argv):
         default=[], help='Skip these computer names (can be specified '
                          'multiple times)'
     )
+    p.add_argument(
+        '-I', '--skip-image', dest='skip_images', action='append',
+        default=[], help='Skip these image names (can be specified multiple times)'
+    )
     args = p.parse_args(argv)
     return args
 
@@ -786,4 +808,8 @@ if __name__ == "__main__":
     else:
         set_log_info(logger)
 
-    GlpiDockerReport().run(html_file_only=args.html, skip_names=args.skip_names)
+    GlpiDockerReport().run(
+        html_file_only=args.html,
+        skip_names=args.skip_names,
+        skip_images=args.skip_images
+    )
