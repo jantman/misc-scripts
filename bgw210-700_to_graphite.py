@@ -35,6 +35,9 @@ CHANGELOG
 
 2018-09-01 Jason Antman <jason@jasonantman.com>:
   - initial version of script
+
+2025-05-29 Jason Antman <jason@jasonantman.com>:
+  - fix for uptime now being a number of seconds instead of a string
 """
 
 import logging
@@ -293,10 +296,8 @@ class BGW210700StatsGetter(object):
     def _sysinfo(self):
         tree = self._get_page('http://%s/cgi-bin/sysinfo.ha' % self.ip)
         info = self._do_kv_table(tree.xpath('//table')[0])
-        parts = [int(x) for x in info['Time Since Last Reboot'].split(':')]
         return {
-            'uptime_sec': parts[0] * 86400 + parts[1] * 3600 +
-                          parts[2] * 60 + parts[3]
+            'uptime_sec': int(info['Time Since Last Reboot'])
         }
 
 
