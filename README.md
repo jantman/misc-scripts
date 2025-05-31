@@ -29,6 +29,7 @@ file.
 * __aws_subnet_ip_usage.py__ - Given an AWS Subnet ID or CIDR, report on the usable number of IPs, used IPs, and how many additional IPs would be taken up if all ELBs and ASGs scaled out.
 * __bigipcookie.pl__ - Perl script to de/encode F5 BigIp persistence cookies.
 * __bgw210-700_to_graphite.py__ - Pull stats from AT&T / Arris BWM210-700 router web UI and push to graphite.
+* __bgw210-700_prom_collector.py__ - Prometheus collector for AT&T / Arris BWM210-700 router.
 * __centos7_rpmbuild.Vagrantfile__ - __Moved to [https://github.com/jantman/rpmbuild-vagrant-boxes](https://github.com/jantman/rpmbuild-vagrant-boxes)__
 * __check_url_list.py__ - Script to check a list of URLs (passed on stdin) for response code, and for response code of the final path in a series of redirects.
 * __cm600_to_graphite.py__ - Pull stats from Netgear CM600 modem web UI and push to graphite.
