@@ -1,0 +1,72 @@
+name: Build and Push BGW210 Docker Image
+
+on:
+  push:
+    paths:
+      - 'bgw210-700_prom_collector.py'
+      - 'Dockerfile.bgw210'
+      - 'requirements-bgw210.txt'
+      - '.github/workflows/bgw210-docker.yml'
+  pull_request:
+    paths:
+      - 'bgw210-700_prom_collector.py'
+      - 'Dockerfile.bgw210'
+      - 'requirements-bgw210.txt'
+      - '.github/workflows/bgw210-docker.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: bgw210-prom-collector
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.bgw210
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run --rm -d --name bgw210-test -p 8000:8000 \
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          sleep 10
+          curl -f http://localhost:8000/metrics || exit 1
+          docker stop bgw210-test
