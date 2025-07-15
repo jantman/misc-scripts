@@ -260,15 +260,23 @@ class UniFiBackup:
                     s += '\n'
                     if d['type'] not in ['usw', 'usg', 'uxg']:
                         continue
-                    data['__ports'][f'{d["name"]} / {p["port_idx"]}'] = {
-                        'Device / Port': f'{d["name"]} / {p["port_idx"]}',
-                        'sortkey': f'{d["name"]} / {p["port_idx"]:04}'.lower(),
-                        'PoE Enabled': 'yes' if p.get('port_poe', False) else '',
-                        'PoE Active': 'yes' if p.get('poe_good', False) else '',
-                        'Speed': p.get('speed'),
-                        'Name': '',
-                        'VLAN(s)': '',
-                    }
+                    try:
+                        data['__ports'][f'{d["name"]} / {p["port_idx"]}'] = {
+                            'Device / Port': f'{d["name"]} / {p["port_idx"]}',
+                            'sortkey': f'{d["name"]} / {p["port_idx"]:04}'.lower(),
+                            'PoE Enabled': 'yes' if p.get('port_poe', False) else '',
+                            'PoE Active': 'yes' if p.get('poe_good', False) else '',
+                            'Speed': p.get('speed'),
+                            'Name': '',
+                            'VLAN(s)': '',
+                        }
+                    except KeyError as ex:
+                        logger.error(
+                            'ERROR: KeyError %s while processing port %s of device: %s',
+                            ex, p['port_idx'],
+                            json.dumps(d, indent=4, sort_keys=True, cls=MagicJSONEncoder)
+                        )
+                        raise
             if 'port_overrides' in d:
                 s += '* Port Overrides:\n'
                 for p in sorted(d['port_overrides'], key=lambda x: x['port_idx']):
