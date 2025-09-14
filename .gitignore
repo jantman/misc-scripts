@@ -3,3 +3,4 @@
 .idea/*
 .glpi_token.json
 glpi_docker_update_report.html
+.glpi_image_cache.pkl

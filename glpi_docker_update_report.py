@@ -60,7 +60,7 @@ import os
 import sys
 import argparse
 import logging
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List, Union, Tuple
 from time import time, sleep
 from datetime import datetime, timezone, timedelta
 import re
@@ -403,7 +403,7 @@ class GlpiDockerReport:
 
     CR_HEADER: re.Pattern = re.compile(r'^(\d+)-(\d+)/(\d+)$')
 
-    def __init__(self):
+    def __init__(self, cache: bool = False):
         if (api_url := os.environ.get('GLPI_API_URL')) is None:
             raise RuntimeError(
                 'ERROR: You must set the GLPI_API_URL environment variable '
@@ -429,6 +429,27 @@ class GlpiDockerReport:
                 'ERROR: You must set the GITHUB_TOKEN environment variable '
                 'to your GitHub API token.'
             )
+        # image caching, for development
+        self._cache_images: bool = False
+        self._cache_ttl_hours: int = 23
+        self._cache_cutoff: float = time() - (self._cache_ttl_hours * 3600)
+        self._cache_path: str = '.glpi_image_cache.pkl'
+        self._image_cache: Dict[str, Tuple[float, Image]] = {}
+        if cache:
+            self._cache_images = True
+            logger.warning('Caching of image registry data ENABLED!')
+            try:
+                import pickle
+                with open(self._cache_path, 'rb') as fh:
+                    self._image_cache = pickle.load(fh)
+                logger.debug(
+                    'Loaded image cache from %s: %s',
+                    self._cache_path,
+                    {k: v[0] for k, v in self._image_cache.items()}
+                )
+            except Exception as ex:
+                logger.error('ERROR: Could not load image cache from %s: %s',
+                             self._cache_path, ex)
         self._api_url: str = api_url
         if not self._api_url.endswith('/'):
             self._api_url += '/'
@@ -442,9 +463,41 @@ class GlpiDockerReport:
         self.images: Dict[str, Image] = {}
         self.old_computers: List[str] = []
 
+    def _get_cached_image(self, name: str) -> Optional[Image]:
+        if not self._cache_images:
+            return None
+        if name in self._image_cache:
+            ts, img = self._image_cache[name]
+            if ts > self._cache_cutoff:
+                logger.debug('Using cached image data for: %s', name)
+                return img
+            else:
+                logger.debug('Cached image data for %s is too old', name)
+        return None
+
+    def _cache_image(self, img: Image) -> None:
+        if not self._cache_images:
+            return
+        self._image_cache[img.name] = (time(), img)
+        logger.debug('Cached image data for: %s', img.name)
+        try:
+            import pickle
+            with open(self._cache_path, 'wb') as fh:
+                pickle.dump(self._image_cache, fh)
+            logger.debug('Wrote image cache to: %s', self._cache_path)
+        except Exception as ex:
+            logger.error('ERROR: Could not write image cache to %s: %s',
+                         self._cache_path, ex)
+
     def _get_image(self, name: str) -> Image:
-        if name not in self.images:
-            self.images[name] = get_image(name)
+        if name in self.images:
+            return self.images[name]
+        if (img := self._get_cached_image(name)) is not None:
+            self.images[name] = img
+            return img
+        self.images[name] = get_image(name)
+        if self._cache_images:
+            self._cache_image(self.images[name])
         return self.images[name]
 
     def _login(self, once: bool = False):
@@ -769,6 +822,10 @@ def parse_args(argv):
         '-I', '--skip-image', dest='skip_images', action='append',
         default=[], help='Skip these image names (can be specified multiple times)'
     )
+    p.add_argument(
+        '-C', '--cache', dest='cache', action='store_true',
+        default=False, help='Cache image registry data for 23h (for development)'
+    )
     args = p.parse_args(argv)
     return args
 
@@ -808,7 +865,7 @@ if __name__ == "__main__":
     else:
         set_log_info(logger)
 
-    GlpiDockerReport().run(
+    GlpiDockerReport(cache=args.cache).run(
         html_file_only=args.html,
         skip_names=args.skip_names,
         skip_images=args.skip_images
