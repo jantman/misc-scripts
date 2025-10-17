@@ -555,7 +555,13 @@ class GlpiDockerReport:
             fh.write(self._api_token)
         logger.debug('Wrote session token to: %s', self.TOKEN_FILE)
 
-    def _api_get_json(self, path: str) -> dict:
+    def _api_get_json(self, path: str) -> Union[dict, list]:
+        """
+        Get JSON data from GLPI API with pagination support.
+        
+        Returns either a dict (for single item responses) or a list (for
+        collections that may be paginated).
+        """
         url = self._api_url + path
         logger.debug('GET: %s', url)
         r = self._sess.get(url)
@@ -563,15 +569,72 @@ class GlpiDockerReport:
             'Got HTTP %d with %d bytes content; headers=%s',
             r.status_code, len(r.content), r.headers
         )
-        if m := self.CR_HEADER.match(r.headers.get('Content-Range', '')):
-            if int(m.group(2)) + 1 != int(m.group(3)):
-                raise NotImplementedError(
-                    f'ERROR: GLPI API responded with Content-Range of '
-                    f'{r.headers.get("Content-Range")}; pagination not '
-                    f'implemented!'
-                )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        
+        # Check if response is paginated
+        if m := self.CR_HEADER.match(r.headers.get('Content-Range', '')):
+            start = int(m.group(1))
+            end = int(m.group(2))
+            total = int(m.group(3))
+            logger.debug(
+                'Content-Range: %d-%d/%d', start, end, total
+            )
+            
+            # If we have all the data, return it
+            if end + 1 >= total:
+                return data
+            
+            # Need to paginate - data should be a list
+            if not isinstance(data, list):
+                raise RuntimeError(
+                    f'ERROR: Expected list for paginated response, got {type(data)}'
+                )
+            
+            all_data = data
+            current_end = end
+            
+            # Fetch remaining pages
+            while current_end + 1 < total:
+                next_start = current_end + 1
+                next_end = min(next_start + (end - start), total - 1)
+                
+                # Add range parameter to URL
+                separator = '&' if '?' in path else '?'
+                next_url = f'{self._api_url}{path}{separator}range={next_start}-{next_end}'
+                
+                logger.debug('GET (pagination): %s', next_url)
+                r = self._sess.get(next_url)
+                logger.debug(
+                    'Got HTTP %d with %d bytes content; headers=%s',
+                    r.status_code, len(r.content), r.headers
+                )
+                r.raise_for_status()
+                page_data = r.json()
+                
+                if not isinstance(page_data, list):
+                    raise RuntimeError(
+                        f'ERROR: Expected list for paginated response, got {type(page_data)}'
+                    )
+                
+                all_data.extend(page_data)
+                
+                # Update current_end from the Content-Range header
+                if m := self.CR_HEADER.match(r.headers.get('Content-Range', '')):
+                    current_end = int(m.group(2))
+                    logger.debug(
+                        'Fetched through item %d of %d', current_end + 1, total
+                    )
+                else:
+                    # No Content-Range header, assume we got what we asked for
+                    current_end = next_end
+            
+            logger.info(
+                'Completed paginated request: fetched %d items', len(all_data)
+            )
+            return all_data
+        
+        return data
 
     def _send_email(self, html: str) -> None:
         addr = os.environ['EMAIL_ADDR']
