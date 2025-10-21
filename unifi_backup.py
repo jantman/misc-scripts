@@ -362,8 +362,8 @@ class UniFiBackup:
                 r, ignore_keys=['name', '_id']
             ) + '\n'
         s += '\n## Users (Clients) with Fixed IPs\n\n'
-        users = [x for x in data['user'].values() if 'fixed_ip' in x]
-        for r in sorted(users, key=lambda x: inet_aton(x['fixed_ip'])):
+        users = [x for x in data['user'].values() if x.get('fixed_ip', '') != '']
+        for r in sorted(users, key=lambda x: x['fixed_ip']):
             net = data["networkconf"].get(
                 r.get('network_id'), {}
             ).get('name', r.get('network_id', 'unknown'))
@@ -375,7 +375,7 @@ class UniFiBackup:
                 'MAC': '``' + r['mac'] + '``',
                 'Network': net,
                 'WLAN': '',
-                'ipaddr': IPv4Address(r['fixed_ip'])
+                'ipaddr': r['fixed_ip']
             }
             if 'wlanconf_id' in r:
                 tmpfixed['WLAN'] = data['wlanconf'].get(
