@@ -215,6 +215,64 @@ class UniFiBackup:
             ) + '\n'
         return s, data
 
+    def _github_anchor(self, heading: str) -> str:
+        """
+        Convert a markdown heading to a GitHub-compatible anchor link.
+        GitHub converts headings to lowercase, replaces spaces with hyphens,
+        and removes special characters.
+        """
+        import re
+        # Convert to lowercase
+        anchor = heading.lower()
+        # Replace spaces with hyphens
+        anchor = anchor.replace(' ', '-')
+        # Remove special characters, keeping only alphanumeric and hyphens
+        anchor = re.sub(r'[^a-z0-9\-]', '', anchor)
+        # Remove consecutive hyphens
+        anchor = re.sub(r'-+', '-', anchor)
+        # Remove leading/trailing hyphens
+        anchor = anchor.strip('-')
+        return anchor
+
+    def _generate_toc(self, data: dict) -> str:
+        """Generate a table of contents for the markdown summary."""
+        toc = '\n## Table of Contents\n\n'
+        
+        # Add the main summary table sections
+        for conf in self.MARKDOWN_SUMMARY_TABLES:
+            toc += f'- [{conf["title"]}](#{self._github_anchor(conf["title"])})\n'
+        
+        # Add main sections
+        sections = [
+            'Devices',
+            'Networks',
+            'Firewall Groups',
+            'Firewall Rules',
+            'Traffic Rules',
+            'Port Profiles',
+            'Port Forwarding',
+            'Settings',
+            'Users (Clients) with Fixed IPs',
+            'WLAN Configs',
+            'WLAN Groups'
+        ]
+        
+        for section in sections:
+            toc += f'- [{section}](#{self._github_anchor(section)})\n'
+            
+            # Add device subsections
+            if section == 'Devices':
+                for d in sorted(data['device'].values(), key=lambda x: x.get('name', '').lower()):
+                    device_name = d.get('name', 'Unknown')
+                    toc += f'  - [{device_name}](#{self._github_anchor(device_name)})\n'
+        
+        # Add WireGuard Users if they exist
+        if 'wireguard_user' in data:
+            toc += f'- [WireGuard Users](#{self._github_anchor("WireGuard Users")})\n'
+        
+        toc += '\n'
+        return toc
+
     def _generate_md_summary(self, data: dict) -> str:
         data['__ports'] = {}
         data['__fixedip'] = {}
@@ -411,6 +469,10 @@ class UniFiBackup:
                 ) + '\n'
         # some of this is calculated, so we prepend it...
         prefix: str = '# UniFi controller configuration summary\n'
+        
+        # Add table of contents
+        prefix += self._generate_toc(data)
+        
         for x in data['__ports'].values():
             if 'native_networkconf_id' in x:
                 x['VLAN(s)'] = networks[x['native_networkconf_id']]
