@@ -113,6 +113,12 @@ class UniFiBackup:
             'fields': ['IP', 'Name', 'MAC', 'Network', 'WLAN']
         },
         {
+            'title': 'Static DNS',
+            'collection': 'static_dns',
+            'sort': 'key',
+            'fields': ['key', 'enabled', 'record_type', 'value', 'ttl', 'weight', 'port', 'priority']
+        },
+        {
             'title': 'Traffic Rules',
             'collection': '__traffic_rules',
             'sort': 'description',
@@ -126,9 +132,10 @@ class UniFiBackup:
         }
     ]
 
-    def __init__(self, outdir, outfile):
+    def __init__(self, outdir, outfile, dump_all_collections=False):
         self.outdir: str = outdir
         self.destpath: str = outfile
+        self.dump_all_collections: bool = dump_all_collections
         logger.debug('Output directory: %s', self.outdir)
         if not os.path.exists(outdir):
             logger.debug('Creating output directory')
@@ -543,11 +550,22 @@ class UniFiBackup:
                             result[curr_coll] = {}
                             continue
                         result[curr_coll][str(row['_id'])] = row
+                    logger.debug('Decoded %d collections: %s', len(result.keys()), sorted(list(result.keys())))
                     try:
                         with open(os.path.join(self.outdir, f'{f}.md'), 'w') as fh:
                             fh.write(self._generate_md_summary(result))
                         logger.debug('Wrote: %s.md', f)
                     finally:
+                        # Dump individual collection files if requested
+                        if self.dump_all_collections:
+                            for coll_name, coll_data in result.items():
+                                if coll_name not in self.IGNORE_COLLECTIONS:
+                                    coll_file = os.path.join(self.outdir, f'{coll_name}.json')
+                                    with open(coll_file, 'w') as fh:
+                                        fh.write(json.dumps(
+                                            coll_data, cls=MagicJSONEncoder, sort_keys=True, indent=4
+                                        ))
+                                    logger.debug('Wrote: %s', coll_file)
                         for k in self.IGNORE_COLLECTIONS:
                             result.pop(k, None)
                         with open(os.path.join(self.outdir, f'{f}.json'), 'w') as fh:
@@ -678,9 +696,12 @@ if __name__ == "__main__":
     p.add_argument('-O', '--outfile', dest='outfile', type=str,
                    default='/root/unifi-autobackup.unf',
                    help='Output file; default: /root/unifi-autobackup.unf')
+    p.add_argument('-D', '--dump-all-collections', dest='dump_all_collections',
+                   action='store_true', default=False,
+                   help='Dump each collection to a separate JSON file')
     args = p.parse_args(sys.argv[1:])
     if args.verbose:
         set_log_debug()
     else:
         set_log_info()
-    UniFiBackup(args.outdir, args.outfile).run(fpath=args.fpath)
+    UniFiBackup(args.outdir, args.outfile, args.dump_all_collections).run(fpath=args.fpath)
