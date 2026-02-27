@@ -19,7 +19,10 @@ from datetime import datetime, timedelta, date
 from tzlocal import get_localzone
 import urllib3
 import argparse
-from Crypto.Cipher import AES
+try:
+    from Crypto.Cipher import AES
+except ImportError:
+    from Cryptodome.Cipher import AES
 from binascii import unhexlify
 from zipfile import ZipFile
 from tempfile import mkstemp
