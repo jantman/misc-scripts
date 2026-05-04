@@ -39,6 +39,8 @@ import os
 import sys
 import argparse
 import logging
+import json
+import html as html_lib
 from typing import Optional, Dict, List, Union
 from datetime import datetime, timezone, timedelta
 import re
@@ -178,6 +180,24 @@ def th(s):
 
 def td(s):
     return '<td style="border: 1px solid black; padding: 1em;">%s</td>' % s
+
+
+def _json_default(o):
+    if isinstance(o, datetime):
+        return o.isoformat()
+    raise TypeError(f'Object not JSON serializable: {type(o)}')
+
+
+def _json_block(rows: List[Dict]) -> str:
+    """Embed `rows` as JSON inside a parseable <pre id="report-data"> element."""
+    payload = html_lib.escape(
+        json.dumps(rows, indent=2, default=_json_default)
+    )
+    return (
+        '<details><summary>Report data (JSON)</summary>\n'
+        f'<pre id="report-data">{payload}</pre>\n'
+        '</details>\n'
+    )
 
 
 class GlpiOsReport:
@@ -348,7 +368,8 @@ class GlpiOsReport:
                 )
         self._get_glpi_data(skip_names=skip_names)
         self._update_operating_systems()
-        html = self._generate_html(skip_names)
+        rows = self._build_rows()
+        html = self._generate_html(rows, skip_names)
         logger.info('Writing report to: glpi_os_update_report.html')
         with open('glpi_os_update_report.html', 'w') as fh:
             fh.write(html)
@@ -436,7 +457,51 @@ class GlpiOsReport:
                 )
             self.operating_systems[slug] = os_obj
 
-    def _generate_html(self, skip_names: List[str]) -> str:
+    def _build_rows(self) -> List[Dict]:
+        """Build one dict per computer; consumed by both HTML render and JSON dump."""
+        rows: List[Dict] = []
+        for name in sorted(self.computers.keys()):
+            comp = self.computers[name]
+            slug = OperatingSystem.slug_for(comp.os_name)
+            is_rolling = OperatingSystem.is_rolling(comp.os_name)
+            os_obj = self.operating_systems.get(slug) if slug else None
+            cycle_data = (
+                os_obj.cycle_for_version(comp.os_version) if os_obj else None
+            )
+            row: Dict = {
+                'Host': comp.name,
+                'LastInventory': comp.last_checkin,
+                'Distribution': comp.os_name,
+                'OsVersion': comp.os_version,
+                'OsKernel': comp.os_kernel,
+                'EndoflifeProduct': slug,
+                'IsRolling': is_rolling,
+                'CurrentCycle': None,
+                'CurrentCycleReleased': None,
+                # CurrentCycleEol: ISO datetime if a date is set; True if
+                # explicitly EOL with no date; False if open-ended (no EOL);
+                # None if unknown.
+                'CurrentCycleEol': None,
+                'NewestCycle': None,
+                'NewestVersion': None,
+                'NewestCycleReleased': None,
+            }
+            if cycle_data:
+                row['CurrentCycle'] = cycle_data.get('cycle')
+                rel = _parse_eol_date(cycle_data.get('releaseDate'))
+                if isinstance(rel, datetime):
+                    row['CurrentCycleReleased'] = rel
+                row['CurrentCycleEol'] = _parse_eol_date(cycle_data.get('eol'))
+            if os_obj and os_obj.newest:
+                row['NewestCycle'] = os_obj.newest.get('cycle')
+                row['NewestVersion'] = os_obj.newest.get('latest')
+                nrel = _parse_eol_date(os_obj.newest.get('releaseDate'))
+                if isinstance(nrel, datetime):
+                    row['NewestCycleReleased'] = nrel
+            rows.append(row)
+        return rows
+
+    def _generate_html(self, rows: List[Dict], skip_names: List[str]) -> str:
         html = ('<html><head>'
                 '<title>GLPI OS Update Report</title>'
                 '</head>\n')
@@ -473,33 +538,33 @@ class GlpiOsReport:
         html += th('Newest Version')
         html += th('Newest Released')
         html += '</tr></thead>\n<tbody>\n'
-        for name in sorted(self.computers.keys()):
-            comp = self.computers[name]
+        for row in rows:
             html += '<tr>'
-            html += td(name)
+            html += td(row['Host'])
+            li = row['LastInventory']
             html += td(
-                f'{comp.last_checkin.date().isoformat()} '
-                f'({naturaldelta(NOW - comp.last_checkin)} ago)'
+                f'{li.date().isoformat()} '
+                f'({naturaldelta(NOW - li)} ago)'
             )
-            if not comp.os_name:
+            if not row['Distribution']:
                 html += td('unknown') * 7
                 html += '</tr>\n'
                 continue
-            html += td(comp.os_name)
-            html += td(comp.os_version or 'unknown')
-            if OperatingSystem.is_rolling(comp.os_name):
+            html += td(row['Distribution'])
+            html += td(row['OsVersion'] or 'unknown')
+            if row['IsRolling']:
                 html += td('rolling release') * 5
                 html += '</tr>\n'
                 continue
-            slug = OperatingSystem.slug_for(comp.os_name)
-            os_obj = self.operating_systems.get(slug) if slug else None
-            if not os_obj or not os_obj.cycles:
-                html += td('unknown') * 5
-                html += '</tr>\n'
-                continue
-            cycle_data = os_obj.cycle_for_version(comp.os_version)
-            if cycle_data:
-                rel = _parse_eol_date(cycle_data.get('releaseDate'))
+            if not row['EndoflifeProduct'] or row['CurrentCycle'] is None:
+                # Couldn't resolve cycle data (no mapping or no matching cycle)
+                if row['NewestCycle'] is None:
+                    html += td('unknown') * 5
+                    html += '</tr>\n'
+                    continue
+                html += td('unknown') * 2
+            else:
+                rel = row['CurrentCycleReleased']
                 if isinstance(rel, datetime):
                     html += td(
                         f'{rel.date().isoformat()} '
@@ -507,7 +572,7 @@ class GlpiOsReport:
                     )
                 else:
                     html += td('unknown')
-                eol = _parse_eol_date(cycle_data.get('eol'))
+                eol = row['CurrentCycleEol']
                 if isinstance(eol, datetime):
                     delta = eol - NOW
                     if delta.total_seconds() < 0:
@@ -526,21 +591,19 @@ class GlpiOsReport:
                     html += td('no EOL set')
                 else:
                     html += td('unknown')
-            else:
-                html += td('unknown') * 2
-            newest = os_obj.newest
-            html += td(str(newest.get('cycle', 'unknown')))
-            html += td(str(newest.get('latest', 'unknown')))
-            newest_rel = _parse_eol_date(newest.get('releaseDate'))
-            if isinstance(newest_rel, datetime):
+            html += td(str(row['NewestCycle'] or 'unknown'))
+            html += td(str(row['NewestVersion'] or 'unknown'))
+            ncr = row['NewestCycleReleased']
+            if isinstance(ncr, datetime):
                 html += td(
-                    f'{newest_rel.date().isoformat()} '
-                    f'({naturaldelta(NOW - newest_rel)} ago)'
+                    f'{ncr.date().isoformat()} '
+                    f'({naturaldelta(NOW - ncr)} ago)'
                 )
             else:
                 html += td('unknown')
             html += '</tr>\n'
         html += '</tbody>\n</table>\n'
+        html += _json_block(rows)
         html += '</body></html>\n'
         return html
 

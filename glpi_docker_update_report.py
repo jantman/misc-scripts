@@ -60,6 +60,8 @@ import os
 import sys
 import argparse
 import logging
+import json
+import html as html_lib
 from typing import Optional, Dict, List, Union, Tuple
 from time import time, sleep
 from datetime import datetime, timezone, timedelta
@@ -395,6 +397,27 @@ def th(s):
 
 def td(s):
     return '<td style="border: 1px solid black; padding: 1em;">%s</td>' % s
+
+
+def _json_default(o):
+    """JSON serializer for datetime objects; UNKNOWN_DATE becomes null."""
+    if isinstance(o, datetime):
+        if o == UNKNOWN_DATE:
+            return None
+        return o.isoformat()
+    raise TypeError(f'Object not JSON serializable: {type(o)}')
+
+
+def _json_block(rows: List[Dict]) -> str:
+    """Embed `rows` as JSON inside a parseable <pre id="report-data"> element."""
+    payload = html_lib.escape(
+        json.dumps(rows, indent=2, default=_json_default)
+    )
+    return (
+        '<details><summary>Report data (JSON)</summary>\n'
+        f'<pre id="report-data">{payload}</pre>\n'
+        '</details>\n'
+    )
 
 
 class GlpiDockerReport:
@@ -797,7 +820,9 @@ class GlpiDockerReport:
                 )
             html += '</tr>\n'
         html += '</tbody>\n'
-        html += '</table></body></html>\n'
+        html += '</table>\n'
+        html += _json_block(rows)
+        html += '</body></html>\n'
         return html
 
     def _get_glpi_data(self, skip_names: List[str]):
