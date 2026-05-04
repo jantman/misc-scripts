@@ -163,6 +163,69 @@ def _parse_eol_date(val) -> Optional[Union[datetime, bool]]:
     return None
 
 
+class ArchKernel:
+    """Arch Linux mainline (`linux`) kernel data: current version plus
+    historical package upload dates from archive.archlinux.org."""
+
+    PKG_URL: str = 'https://archlinux.org/packages/core/x86_64/linux/json/'
+    ARCHIVE_URL: str = 'https://archive.archlinux.org/packages/l/linux/'
+    # Apache-style listing entries look like:
+    #   <a href="linux-6.19.11.arch1-1-x86_64.pkg.tar.zst">...</a>   03-Apr-2026 00:15    145M
+    ARCHIVE_RE: re.Pattern = re.compile(
+        r'<a href="linux-([\d.]+\.arch\d+-\d+)-x86_64\.pkg\.tar\.(?:xz|zst)">'
+        r'[^<]+</a>\s+(\d{2}-[A-Za-z]{3}-\d{4}\s\d{2}:\d{2})'
+    )
+
+    def __init__(self):
+        self.pkgver: Optional[str] = None
+        self.pkgrel: Optional[str] = None
+        self.last_update: Optional[datetime] = None
+        # uname-style version (e.g. "6.19.11-arch1-1") -> archive upload date
+        self.history: Dict[str, datetime] = {}
+
+    @property
+    def version(self) -> Optional[str]:
+        """uname-style version string, e.g. '6.12.5-arch1-1', reconstructed
+        from Arch's pkgver ('6.12.5.arch1') + pkgrel ('1')."""
+        if not self.pkgver or not self.pkgrel:
+            return None
+        return f"{self.pkgver.replace('.arch', '-arch')}-{self.pkgrel}"
+
+    def update(self) -> None:
+        logger.info('Fetching Arch kernel info: %s', self.PKG_URL)
+        r = requests.get(self.PKG_URL, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        self.pkgver = data.get('pkgver')
+        self.pkgrel = data.get('pkgrel')
+        if lu := data.get('last_update'):
+            d = parse(lu)
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            self.last_update = d
+
+    def update_history(self) -> None:
+        logger.info('Fetching Arch kernel archive: %s', self.ARCHIVE_URL)
+        r = requests.get(self.ARCHIVE_URL, timeout=60)
+        r.raise_for_status()
+        for m in self.ARCHIVE_RE.finditer(r.text):
+            uname_v = m.group(1).replace('.arch', '-arch')
+            try:
+                d = datetime.strptime(
+                    m.group(2), '%d-%b-%Y %H:%M'
+                ).replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+            self.history[uname_v] = d
+        logger.info(
+            'Loaded %d kernel package dates from archive', len(self.history)
+        )
+
+
+def _is_arch(name: Optional[str]) -> bool:
+    return bool(name and name.lower().strip().startswith('arch linux'))
+
+
 class Computer:
 
     def __init__(self, _id: int, name: str, last_checkin: datetime):
@@ -229,6 +292,7 @@ class GlpiOsReport:
         self._login()
         self.computers: Dict[str, Computer] = {}
         self.operating_systems: Dict[str, OperatingSystem] = {}
+        self.arch_kernel: Optional[ArchKernel] = None
         self.old_computers: List[str] = []
 
     def _login(self, once: bool = False):
@@ -438,6 +502,7 @@ class GlpiOsReport:
 
     def _update_operating_systems(self):
         slugs: set = set()
+        has_arch: bool = False
         for comp in self.computers.values():
             if (slug := OperatingSystem.slug_for(comp.os_name)) is not None:
                 slugs.add(slug)
@@ -447,6 +512,8 @@ class GlpiOsReport:
                     '(computer %s); add it to OperatingSystem.PRODUCT_MAP',
                     comp.os_name, comp.name
                 )
+            if _is_arch(comp.os_name):
+                has_arch = True
         for slug in sorted(slugs):
             os_obj = OperatingSystem(slug)
             try:
@@ -456,6 +523,20 @@ class GlpiOsReport:
                     'Failed to fetch endoflife.date data for %s: %s', slug, ex
                 )
             self.operating_systems[slug] = os_obj
+        if has_arch:
+            ak = ArchKernel()
+            try:
+                ak.update()
+                self.arch_kernel = ak
+            except Exception as ex:
+                logger.error('Failed to fetch Arch kernel info: %s', ex)
+            if self.arch_kernel:
+                try:
+                    self.arch_kernel.update_history()
+                except Exception as ex:
+                    logger.error(
+                        'Failed to fetch Arch kernel archive: %s', ex
+                    )
 
     def _build_rows(self) -> List[Dict]:
         """Build one dict per computer; consumed by both HTML render and JSON dump."""
@@ -473,6 +554,7 @@ class GlpiOsReport:
                 'LastInventory': comp.last_checkin,
                 'Distribution': comp.os_name,
                 'OsVersion': comp.os_version,
+                'OsVersionReleased': None,
                 'OsKernel': comp.os_kernel,
                 'EndoflifeProduct': slug,
                 'IsRolling': is_rolling,
@@ -498,6 +580,17 @@ class GlpiOsReport:
                 nrel = _parse_eol_date(os_obj.newest.get('releaseDate'))
                 if isinstance(nrel, datetime):
                     row['NewestCycleReleased'] = nrel
+            # Arch is rolling, so we compare the running kernel against the
+            # current archlinux.org `linux` package version as a proxy for
+            # how out of date the host is.
+            if (is_rolling and _is_arch(comp.os_name)
+                    and self.arch_kernel and self.arch_kernel.version):
+                row['OsVersion'] = comp.os_kernel
+                row['OsVersionReleased'] = self.arch_kernel.history.get(
+                    comp.os_kernel
+                )
+                row['NewestVersion'] = self.arch_kernel.version
+                row['NewestCycleReleased'] = self.arch_kernel.last_update
             rows.append(row)
         return rows
 
@@ -553,7 +646,32 @@ class GlpiOsReport:
             html += td(row['Distribution'])
             html += td(row['OsVersion'] or 'unknown')
             if row['IsRolling']:
-                html += td('rolling release') * 5
+                if row['NewestVersion']:
+                    # Rolling distro with a specific comparison (e.g. Arch
+                    # kernel): render newest-package columns instead of "rolling
+                    # release" placeholders. Show the installed package's
+                    # upload date in place of "Current Cycle Released" if known.
+                    ovr = row['OsVersionReleased']
+                    if isinstance(ovr, datetime):
+                        html += td(
+                            f'{ovr.date().isoformat()} '
+                            f'({naturaldelta(NOW - ovr)} ago)'
+                        )
+                    else:
+                        html += td('rolling release')
+                    html += td('rolling release')
+                    html += td('kernel')
+                    html += td(row['NewestVersion'])
+                    ncr = row['NewestCycleReleased']
+                    if isinstance(ncr, datetime):
+                        html += td(
+                            f'{ncr.date().isoformat()} '
+                            f'({naturaldelta(NOW - ncr)} ago)'
+                        )
+                    else:
+                        html += td('unknown')
+                else:
+                    html += td('rolling release') * 5
                 html += '</tr>\n'
                 continue
             if not row['EndoflifeProduct'] or row['CurrentCycle'] is None:
