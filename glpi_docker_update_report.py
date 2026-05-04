@@ -364,12 +364,112 @@ class ImageVersion:
         return f'<ImageVersion(image="{self.image.name}", tag="{self.tag}">'
 
 
+class OperatingSystem:
+    """OS distribution data from endoflife.date."""
+
+    PRODUCT_MAP: Dict[str, str] = {
+        'ubuntu': 'ubuntu',
+        'debian gnu/linux': 'debian',
+        'debian': 'debian',
+        'fedora linux': 'fedora',
+        'fedora': 'fedora',
+        'centos stream': 'centos-stream',
+        'centos linux': 'centos',
+        'centos': 'centos',
+        'red hat enterprise linux': 'rhel',
+        'rhel': 'rhel',
+        'alpine linux': 'alpine',
+        'alpine': 'alpine',
+        'almalinux': 'almalinux',
+        'rocky linux': 'rocky-linux',
+        'amazon linux': 'amazon-linux',
+        'opensuse leap': 'opensuse',
+        'opensuse': 'opensuse',
+        'raspberry pi os': 'raspberry-pi-os',
+        'raspbian': 'raspbian',
+        'linux mint': 'linuxmint',
+    }
+
+    # Rolling distros — no meaningful "newest version" to report
+    ROLLING_DISTROS: set = {'arch linux', 'gentoo', 'manjaro linux', 'manjaro'}
+
+    def __init__(self, product_slug: str):
+        self.product_slug: str = product_slug
+        self.cycles: List[dict] = []
+        self.cycles_by_name: Dict[str, dict] = {}
+
+    @classmethod
+    def is_rolling(cls, name: Optional[str]) -> bool:
+        if not name:
+            return False
+        n = name.lower().strip()
+        return any(n.startswith(r) for r in cls.ROLLING_DISTROS)
+
+    @classmethod
+    def slug_for(cls, name: Optional[str]) -> Optional[str]:
+        """Match `name` against PRODUCT_MAP; longer keys win to disambiguate
+        e.g. 'Debian GNU/Linux 12 (bookworm)' from a bare 'debian' key."""
+        if not name:
+            return None
+        name_lower = name.lower().strip()
+        if name_lower in cls.PRODUCT_MAP:
+            return cls.PRODUCT_MAP[name_lower]
+        best: Optional[str] = None
+        best_len: int = 0
+        for key, slug in cls.PRODUCT_MAP.items():
+            if name_lower.startswith(key) and len(key) > best_len:
+                best = slug
+                best_len = len(key)
+        return best
+
+    @property
+    def newest(self) -> Optional[dict]:
+        return self.cycles[0] if self.cycles else None
+
+    def update(self) -> None:
+        url = f'https://endoflife.date/api/{self.product_slug}.json'
+        logger.info('Fetching OS data: %s', url)
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        self.cycles = r.json()
+        for c in self.cycles:
+            self.cycles_by_name[str(c['cycle'])] = c
+
+    def cycle_for_version(self, version: Optional[str]) -> Optional[dict]:
+        if not version:
+            return None
+        if version in self.cycles_by_name:
+            return self.cycles_by_name[version]
+        if m := re.match(r'(\d+\.\d+)', version):
+            if (mm := m.group(1)) in self.cycles_by_name:
+                return self.cycles_by_name[mm]
+        if m := re.match(r'(\d+)', version):
+            if (major := m.group(1)) in self.cycles_by_name:
+                return self.cycles_by_name[major]
+        return None
+
+
+def _parse_eol_date(val) -> Optional[Union[datetime, bool]]:
+    """Parse endoflife.date eol/releaseDate fields (date string, True, or False)."""
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        try:
+            return parse(val).replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    return None
+
+
 class Computer:
 
     def __init__(self, _id: int, name: str):
         self._id: int = _id
         self.name: str = name
         self.vms: Dict[str, 'VirtualMachine'] = {}
+        self.os_name: Optional[str] = None
+        self.os_version: Optional[str] = None
+        self.os_kernel: Optional[str] = None
 
     def add_vm(self, name: str, imgver: ImageVersion):
         self.vms[name] = VirtualMachine(
@@ -461,6 +561,7 @@ class GlpiDockerReport:
         self._login()
         self.computers: Dict[str, Computer] = {}
         self.images: Dict[str, Image] = {}
+        self.operating_systems: Dict[str, OperatingSystem] = {}
         self.old_computers: List[str] = []
 
     def _get_cached_image(self, name: str) -> Optional[Image]:
@@ -667,6 +768,7 @@ class GlpiDockerReport:
                     f'are set. To send email, please set: {email_vars}'
                 )
         self._get_glpi_data(skip_names=skip_names)
+        self._update_operating_systems()
         name: str
         comp: Computer
         for name in sorted(self.computers.keys()):
@@ -684,7 +786,14 @@ class GlpiDockerReport:
             if img.name in skip_images:
                 logger.info('Skipping image: %s', img.name)
                 continue
-            img.update()
+            try:
+                img.update()
+            except Exception as ex:
+                logger.error(
+                    'Failed to update registry data for image %s: %s; '
+                    'continuing without newest-tag info for this image',
+                    img.name, ex
+                )
             rows.extend(self._rows_for_image(img))
         html = self._generate_html(rows, skip_names)
         logger.info('Writing report to: glpi_docker_update_report.html')
@@ -738,6 +847,7 @@ class GlpiDockerReport:
                 '<p>Skipped the following hosts based on command line argument:'
                 f' {", ".join(sorted(skip_names))}</p>\n'
             )
+        html += '<h2>Docker Images</h2>\n'
         html += ('<table style="border: 1px solid black; '
                  'border-collapse: collapse;">\n')
         html += '<thead><tr>'
@@ -790,7 +900,91 @@ class GlpiDockerReport:
                 )
             html += '</tr>\n'
         html += '</tbody>\n'
-        html += '</table></body></html>\n'
+        html += '</table>\n'
+        html += self._generate_os_html()
+        html += '</body></html>\n'
+        return html
+
+    def _generate_os_html(self) -> str:
+        html = '<h2>Operating Systems</h2>\n'
+        html += ('<table style="border: 1px solid black; '
+                 'border-collapse: collapse;">\n')
+        html += '<thead><tr>'
+        html += th('Host')
+        html += th('Distribution')
+        html += th('Current Version')
+        html += th('Current Cycle Released')
+        html += th('Current Cycle EOL')
+        html += th('Newest Cycle')
+        html += th('Newest Version')
+        html += th('Newest Released')
+        html += '</tr></thead>\n<tbody>\n'
+        for name in sorted(self.computers.keys()):
+            comp = self.computers[name]
+            if not comp.vms:
+                continue
+            html += '<tr>'
+            html += td(name)
+            if not comp.os_name:
+                html += td('unknown') * 7
+                html += '</tr>\n'
+                continue
+            html += td(comp.os_name)
+            html += td(comp.os_version or 'unknown')
+            if OperatingSystem.is_rolling(comp.os_name):
+                html += td('rolling release') * 5
+                html += '</tr>\n'
+                continue
+            slug = OperatingSystem.slug_for(comp.os_name)
+            os_obj = self.operating_systems.get(slug) if slug else None
+            if not os_obj or not os_obj.cycles:
+                html += td('unknown') * 5
+                html += '</tr>\n'
+                continue
+            cycle_data = os_obj.cycle_for_version(comp.os_version)
+            if cycle_data:
+                rel = _parse_eol_date(cycle_data.get('releaseDate'))
+                if isinstance(rel, datetime):
+                    html += td(
+                        f'{rel.date().isoformat()} '
+                        f'({naturaldelta(NOW - rel)} ago)'
+                    )
+                else:
+                    html += td('unknown')
+                eol = _parse_eol_date(cycle_data.get('eol'))
+                if isinstance(eol, datetime):
+                    delta = eol - NOW
+                    if delta.total_seconds() < 0:
+                        html += td(
+                            f'{eol.date().isoformat()} '
+                            f'(EOL {naturaldelta(-delta)} ago)'
+                        )
+                    else:
+                        html += td(
+                            f'{eol.date().isoformat()} '
+                            f'(in {naturaldelta(delta)})'
+                        )
+                elif eol is True:
+                    html += td('EOL')
+                elif eol is False:
+                    html += td('no EOL set')
+                else:
+                    html += td('unknown')
+            else:
+                html += td('unknown') * 2
+            newest = os_obj.newest
+            html += td(str(newest.get('cycle', 'unknown')))
+            html += td(str(newest.get('latest', 'unknown')))
+            newest_rel = _parse_eol_date(newest.get('releaseDate'))
+            if isinstance(newest_rel, datetime):
+                html += td(
+                    f'{newest_rel.date().isoformat()} '
+                    f'({naturaldelta(NOW - newest_rel)} ago)'
+                )
+            else:
+                html += td('unknown')
+            html += '</tr>\n'
+        html += '</tbody>\n</table>\n'
         return html
 
     def _get_glpi_data(self, skip_names: List[str]):
@@ -829,6 +1023,7 @@ class GlpiDockerReport:
     def _do_computer(self, comp_id: int, comp_name: str):
         comp = Computer(comp_id, comp_name)
         self.computers[comp_name] = comp
+        self._load_computer_os(comp)
         vms = self._api_get_json(
             f'Computer/{comp_id}/ComputerVirtualMachine/'
             f'?expand_dropdowns=true&range=0-1000'
@@ -864,6 +1059,51 @@ class GlpiDockerReport:
         logger.info(
             'Done with computer %s (%d)', comp_name, comp_id
         )
+
+    def _load_computer_os(self, comp: Computer) -> None:
+        try:
+            os_data = self._api_get_json(
+                f'Computer/{comp._id}/Item_OperatingSystem/'
+                '?expand_dropdowns=true'
+            )
+        except Exception as ex:
+            logger.error(
+                'Could not fetch OS info for computer %s: %s', comp.name, ex
+            )
+            return
+        if not os_data or not isinstance(os_data, list):
+            logger.debug('No OS info for computer %s', comp.name)
+            return
+        entry = os_data[0]
+        comp.os_name = entry.get('operatingsystems_id') or None
+        comp.os_version = entry.get('operatingsystemversions_id') or None
+        comp.os_kernel = entry.get('operatingsystemkernelversions_id') or None
+        logger.debug(
+            'Computer %s OS: %s / %s', comp.name, comp.os_name, comp.os_version
+        )
+
+    def _update_operating_systems(self) -> None:
+        slugs: set = set()
+        for comp in self.computers.values():
+            if not comp.vms:
+                continue
+            if (slug := OperatingSystem.slug_for(comp.os_name)) is not None:
+                slugs.add(slug)
+            elif comp.os_name and not OperatingSystem.is_rolling(comp.os_name):
+                logger.warning(
+                    'No endoflife.date product mapping for OS %r '
+                    '(computer %s); add it to OperatingSystem.PRODUCT_MAP',
+                    comp.os_name, comp.name
+                )
+        for slug in sorted(slugs):
+            os_obj = OperatingSystem(slug)
+            try:
+                os_obj.update()
+            except Exception as ex:
+                logger.error(
+                    'Failed to fetch endoflife.date data for %s: %s', slug, ex
+                )
+            self.operating_systems[slug] = os_obj
 
 
 def parse_args(argv):
