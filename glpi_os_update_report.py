@@ -577,7 +577,12 @@ class GlpiOsReport:
             if os_obj and os_obj.newest:
                 row['NewestCycle'] = os_obj.newest.get('cycle')
                 row['NewestVersion'] = os_obj.newest.get('latest')
-                nrel = _parse_eol_date(os_obj.newest.get('releaseDate'))
+                # Prefer latestReleaseDate (when `latest` was released)
+                # over releaseDate (when the cycle's first version dropped).
+                nrel = _parse_eol_date(
+                    os_obj.newest.get('latestReleaseDate')
+                    or os_obj.newest.get('releaseDate')
+                )
                 if isinstance(nrel, datetime):
                     row['NewestCycleReleased'] = nrel
             # Arch is rolling, so we compare the running kernel against the
