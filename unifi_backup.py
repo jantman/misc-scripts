@@ -82,6 +82,8 @@ class UniFiBackup:
     KEY = unhexlify('626379616e676b6d6c756f686d617273')
     IV = unhexlify('75626e74656e74657270726973656170')
 
+    FIRMWARE_API_URL = 'https://fw-update.ubnt.com/api/firmware-latest'
+
     IGNORE_COLLECTIONS = [
         'admin_access_log', 'alarm', 'alert', 'alert_setting',
         'diagnostics_config', 'event', 'rogue', 'user', 'user_session_log'
@@ -98,7 +100,7 @@ class UniFiBackup:
             'title': 'Device List',
             'collection': '__devices',
             'sort': 'sortkey',
-            'fields': ['name', 'ip', 'type', 'model', 'mac']
+            'fields': ['name', 'ip', 'type', 'model', 'mac', 'version', 'available']
         },
         {
             'title': 'Switch Ports',
@@ -139,6 +141,7 @@ class UniFiBackup:
         self.outdir: str = outdir
         self.destpath: str = outfile
         self.dump_all_collections: bool = dump_all_collections
+        self._firmware_fetch_failed: bool = False
         logger.debug('Output directory: %s', self.outdir)
         if not os.path.exists(outdir):
             logger.debug('Creating output directory')
@@ -244,6 +247,113 @@ class UniFiBackup:
         anchor = anchor.strip('-')
         return anchor
 
+    @staticmethod
+    def _version_tuple(v) -> Optional[tuple]:
+        """
+        Parse a version string like '7.2.123.16565' or 'v7.4.1+16850' into a
+        comparable tuple. Returns None for unparseable input.
+        """
+        if v is None:
+            return None
+        s = str(v)
+        if s.startswith('v'):
+            s = s[1:]
+        s = s.replace('+', '.')
+        parts = []
+        for p in s.split('.'):
+            try:
+                parts.append(int(p))
+            except ValueError:
+                parts.append(-1)
+        return tuple(parts) if parts else None
+
+    @classmethod
+    def _normalize_fw_version(cls, v) -> Optional[str]:
+        """
+        Convert a unifi-firmware API version like 'v7.4.1+16850' to the same
+        form devices report ('7.4.1.16850'). Pass-through for already-normalized
+        values.
+        """
+        if v is None:
+            return None
+        s = str(v)
+        if s.startswith('v'):
+            s = s[1:]
+        return s.replace('+', '.')
+
+    def _fetch_firmware_data(self) -> dict:
+        """
+        Fetch the latest released firmware versions from the public Ubiquiti
+        firmware API. Returns a dict mapping platform -> firmware entry, or an
+        empty dict on any error. Failures are logged and tracked via
+        ``self._firmware_fetch_failed`` so the rest of the backup can still
+        complete normally.
+        """
+        logger.info('Fetching latest firmware versions from %s', self.FIRMWARE_API_URL)
+        try:
+            r = requests.get(
+                self.FIRMWARE_API_URL,
+                params=[
+                    ('filter', 'eq~~product~~unifi-firmware'),
+                    ('filter', 'eq~~channel~~release'),
+                ],
+                timeout=30,
+            )
+            r.raise_for_status()
+            fw_list = r.json().get('_embedded', {}).get('firmware', [])
+        except Exception as ex:
+            logger.error(
+                'Failed to fetch UniFi firmware data from %s: %s; '
+                'continuing without available-version info.',
+                self.FIRMWARE_API_URL, ex
+            )
+            self._firmware_fetch_failed = True
+            return {}
+        result = {fw['platform']: fw for fw in fw_list if 'platform' in fw}
+        logger.debug('Fetched %d firmware entries', len(result))
+        return result
+
+    def _available_firmware_for_device(self, device: dict, firmware_map: dict) -> Optional[dict]:
+        """
+        Look up the latest available firmware for a device. Falls back to
+        ``<model>V2``/``V3``/``V4`` if the platform key matching ``model``
+        returns a different major version than the device is running (this
+        handles e.g. UXG-Pro reporting model=UXGPRO but using UXGPROV2 firmware).
+        """
+        model = device.get('model')
+        if not model or not firmware_map:
+            return None
+        fw = firmware_map.get(model)
+        device_ver = self._version_tuple(device.get('version'))
+        if fw is not None and device_ver:
+            fw_ver = self._version_tuple(fw.get('version'))
+            if fw_ver and fw_ver[0] != device_ver[0]:
+                for suffix in ('V2', 'V3', 'V4'):
+                    alt = firmware_map.get(model + suffix)
+                    if not alt:
+                        continue
+                    alt_ver = self._version_tuple(alt.get('version'))
+                    if alt_ver and alt_ver[0] == device_ver[0]:
+                        return alt
+        return fw
+
+    def _annotate_devices_with_firmware(self, devices: dict, firmware_map: dict) -> None:
+        """
+        For each device, attach an ``_available_firmware`` key with the matched
+        firmware-API entry (or None) and an ``_upgrade_available`` boolean.
+        """
+        for d in devices.values():
+            fw = self._available_firmware_for_device(d, firmware_map)
+            d['_available_firmware'] = fw
+            if fw is None:
+                d['_upgrade_available'] = None
+                continue
+            cur = self._version_tuple(d.get('version'))
+            avail = self._version_tuple(fw.get('version'))
+            d['_upgrade_available'] = (
+                bool(cur and avail and avail > cur)
+            )
+
     def _generate_toc(self, data: dict) -> str:
         """Generate a table of contents for the markdown summary."""
         toc = '\n## Table of Contents\n\n'
@@ -291,6 +401,15 @@ class UniFiBackup:
         networks = {}
         s = '\n## Devices\n'
         for d in data['device'].values():
+            fw = d.get('_available_firmware')
+            avail_ver = self._normalize_fw_version(fw.get('version')) if fw else None
+            upgrade = d.get('_upgrade_available')
+            if avail_ver is None:
+                avail_cell = '?'
+            elif upgrade:
+                avail_cell = f'{avail_ver} (upgrade available)'
+            else:
+                avail_cell = avail_ver
             data['__devices'][d.get("name")] = {
                 'sortkey': d.get("name", '').lower(),
                 'name': f'[{d.get("name")}](#{d.get("name")})',
@@ -298,11 +417,22 @@ class UniFiBackup:
                 'type': d['type'],
                 'model': d['model'],
                 'mac': '``' + d['mac'] + '``',
+                'version': d.get('version', ''),
+                'available': avail_cell,
             }
             s += f'\n### {d.get("name")}\n\nip={d["ip"]} type={d["type"]} ' \
                  f'model={d["model"]} serial={d.get("serial")} mac=``{d["mac"]}``\n\n'
             s += f'* version={d["version"]} ' \
                  f'kernel_version={d.get("kernel_version", "n/a")}\n'
+            if fw is not None:
+                fw_platform = fw.get('platform', d.get('model', '?'))
+                upgrade_note = ' (upgrade available)' if upgrade else ''
+                s += f'* latest available version={avail_ver}' \
+                     f' (platform={fw_platform}, channel={fw.get("channel", "release")})' \
+                     f'{upgrade_note}\n'
+            else:
+                s += '* latest available version: unknown ' \
+                     '(no firmware-API match for model)\n'
             s += f'* adopted={d["adopted"]} ' \
                  f'adoption_completed={d["adoption_completed"]} id={d["_id"]}\n'
             if 'provisioned_at' in d:
@@ -554,6 +684,11 @@ class UniFiBackup:
                             continue
                         result[curr_coll][str(row['_id'])] = row
                     logger.debug('Decoded %d collections: %s', len(result.keys()), sorted(list(result.keys())))
+                    if 'device' in result:
+                        firmware_map = self._fetch_firmware_data()
+                        self._annotate_devices_with_firmware(
+                            result['device'], firmware_map
+                        )
                     try:
                         with open(os.path.join(self.outdir, f'{f}.md'), 'w') as fh:
                             fh.write(self._generate_md_summary(result))
@@ -579,6 +714,12 @@ class UniFiBackup:
         finally:
             logger.debug('Remove %s', fixed_zip_path)
             os.unlink(fixed_zip_path)
+        if self._firmware_fetch_failed:
+            logger.error(
+                'Backup completed, but firmware-version lookup failed; '
+                'exiting with non-zero status.'
+            )
+            raise SystemExit(2)
 
     def decrypt_file(self, fpath):
         with open(fpath, 'rb') as in_file:
