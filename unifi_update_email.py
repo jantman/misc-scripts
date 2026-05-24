@@ -86,12 +86,13 @@ def main(json_path):
     msg['To'] = addr
     msg.attach(MIMEText(body, 'html'))
 
+    smtp_user = os.environ['SMTP_USER']
     s = smtplib.SMTP(host, port)
     s.ehlo()
     s.starttls()
     s.ehlo()
-    s.login(addr, os.environ['SMTP_PASSWORD'])
-    s.sendmail(addr, addr, msg.as_string())
+    s.login(smtp_user, os.environ['SMTP_PASSWORD'])
+    s.sendmail(smtp_user, addr, msg.as_string())
     s.quit()
 
     print(f'Emailed UniFi firmware update report: {len(pending)} device(s).')
