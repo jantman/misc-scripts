@@ -74,13 +74,14 @@ class GrafanaBackup:
         for folder in sorted(items, key=lambda x: x['id']):
             if folder['type'] != 'dash-folder':
                 continue
+            safe_title = folder['title'].replace('/', '_')
             if folder.get('folderId'):
                 folder_paths[folder['id']] = os.path.join(
-                    folder_paths[folder['folderId']], folder['title']
+                    folder_paths[folder['folderId']], safe_title
                 )
             else:
                 folder_paths[folder['id']] = os.path.join(
-                    self.outdir, 'dashboards', folder['title']
+                    self.outdir, 'dashboards', safe_title
                 )
             logger.debug('makedirs: %s', folder_paths[folder['id']])
             os.makedirs(folder_paths[folder['id']], exist_ok=True)
@@ -90,7 +91,7 @@ class GrafanaBackup:
             db = self._get(f'/api/dashboards/uid/{dash["uid"]}')
             path: str = os.path.join(
                 folder_paths[dash.get('folderId', 0)],
-                f'{dash["title"]}.json'
+                f'{dash["title"].replace("/", "_")}.json'
             )
             logger.info('Write dashboard %s to %s', dash['uid'], path)
             with open(path, 'w') as fh:
@@ -101,15 +102,17 @@ class GrafanaBackup:
         rulecount: int = 0
         for foldername, groups in alerts.items():
             for group in groups:
-                groupname = group['name']
+                groupname = group['name'].replace('/', '_')
                 for rule in group['rules']:
                     outdir = os.path.join(
-                        self.outdir, 'alert_rules', foldername, groupname
+                        self.outdir, 'alert_rules',
+                        foldername.replace('/', '_'), groupname
                     )
                     logger.debug('makedirs: %s', outdir)
                     os.makedirs(outdir, exist_ok=True)
                     path = os.path.join(
-                        outdir, f'{rule["grafana_alert"]["title"]}.json'
+                        outdir,
+                        f'{rule["grafana_alert"]["title"].replace("/", "_")}.json'
                     )
                     logger.info('Write: %s', path)
                     with open(path, 'w') as fh:
