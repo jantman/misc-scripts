@@ -1,0 +1,7 @@
+{
+  "base_url": "https://zoneminder.example.com",
+  "username": "REPLACE_WITH_ZM_USERNAME",
+  "password": "REPLACE_WITH_ZM_PASSWORD",
+  "verify_ssl": true,
+  "timeout": 30
+}

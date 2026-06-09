@@ -1,0 +1,14 @@
+# Local secrets — never commit your real config
+zm_config.json
+
+# Scratch images / output
+*.jpg
+*.jpeg
+*.png
+results*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
