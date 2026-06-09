@@ -813,6 +813,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> int:
+    # Stream output line-by-line even when stdout is piped (e.g. into `tee` or a
+    # log file). Without this, Python block-buffers a non-TTY stdout and the
+    # per-frame/per-event progress would not appear until the buffer fills.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     return args.func(args)
