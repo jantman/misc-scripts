@@ -195,9 +195,13 @@ class ZMClient:
         return events
 
     def get_event(self, event_id: int) -> dict[str, Any]:
-        """Return {'Event': {...}, 'Frame': [...]} for one event."""
+        """Return {'Event': {...}, 'Frame': [...], ...} for one event.
+
+        The API wraps the record in a top-level 'event' key; unwrap it so
+        callers can read ['Event'] / ['Frame'] directly.
+        """
         payload = self._api_get(f"/api/events/{event_id}.json")
-        return payload
+        return payload.get("event", payload)
 
     # -- frames (images) -------------------------------------------------- #
 
@@ -254,12 +258,6 @@ class Region:
         return self.w * self.h
 
 
-def crop_gray(img: Image.Image, region: Region) -> np.ndarray:
-    """Crop to the ROI and return a float32 grayscale array."""
-    crop = img.convert("L").crop(region.box)
-    return np.asarray(crop, dtype=np.float32)
-
-
 def roi_diff(a: np.ndarray, b: np.ndarray, pixel_threshold: int) -> dict[str, float]:
     """Compare two equally-sized grayscale ROI arrays.
 
@@ -284,18 +282,60 @@ def roi_diff(a: np.ndarray, b: np.ndarray, pixel_threshold: int) -> dict[str, fl
     }
 
 
-def select_frames(frames: list[dict[str, Any]], frame_type: str, sample_every: int) -> list[dict[str, Any]]:
-    """Pick which frames of an event to examine."""
+def is_blank_frame(gray: np.ndarray, blank_mean: float, blank_std: float) -> bool:
+    """Detect ZoneMinder's "Failed getting frame" placeholder image.
+
+    When zms cannot extract a frame it returns, with HTTP 200 and a valid JPEG
+    body, a near-black image bearing the text "Failed getting frame". If treated
+    as real data, the transition real-frame -> black-placeholder registers as
+    massive (false) motion. The placeholder is near-uniform and near-black
+    (mean ~1, std ~4), which is easily separated from real frames (even dark
+    night scenes carry sensor noise / scene texture, giving much higher std).
+
+    A frame is flagged blank only if BOTH its mean brightness and its standard
+    deviation fall below the thresholds, so a merely-dark-but-textured real
+    frame is not discarded. Set blank_mean <= 0 to disable the check.
+    """
+    if blank_mean <= 0:
+        return False
+    return float(gray.mean()) < blank_mean and float(gray.std()) < blank_std
+
+
+def select_frame_ids(
+    total_frames: int,
+    frame_records: list[dict[str, Any]],
+    frame_type: str,
+    sample_every: int,
+) -> list[int]:
+    """Return the list of FrameIds to examine.
+
+    ZoneMinder only keeps an individual DB record per "interesting" frame
+    (alarm frames plus a little context) and collapses the rest into sparse
+    "Bulk" records — so the Frame[] metadata is NOT a complete frame list.
+    The actual JPEGs, however, are all retrievable by number via zms, so for
+    a full ('all') scan we iterate the real 1..total_frames range to get
+    complete coverage and proper consecutive-frame diffs.
+
+    For an 'alarm' scan we use the DB records (only alarm frames have them),
+    falling back to the full range if none are present.
+    """
     if frame_type == "alarm":
-        chosen = [f for f in frames if str(f.get("Type", "")).lower() == "alarm"]
-        # Always keep some context if there were no alarm frames.
-        if not chosen:
-            chosen = frames
+        ids = sorted(
+            int(f["FrameId"])
+            for f in frame_records
+            if str(f.get("Type", "")).lower() == "alarm"
+        )
+        if not ids:  # no alarm records — fall back to a full scan
+            ids = list(range(1, total_frames + 1))
     else:
-        chosen = frames
+        if total_frames > 0:
+            ids = list(range(1, total_frames + 1))
+        else:  # no count available — fall back to whatever records exist
+            ids = sorted(int(f["FrameId"]) for f in frame_records)
+
     if sample_every > 1:
-        chosen = chosen[::sample_every]
-    return chosen
+        ids = ids[::sample_every]
+    return ids
 
 
 @dataclass
@@ -308,6 +348,9 @@ class EventResult:
     max_changed_pixels: float
     peak_frame_id: int | None
     frames_examined: int
+    blank_frames: int = 0
+    duplicate_frames: int = 0
+    fetch_errors: int = 0
     error: str | None = None
 
 
@@ -318,12 +361,15 @@ def analyze_event(
     pixel_threshold: int,
     frame_type: str,
     sample_every: int,
+    blank_mean: float = 6.0,
+    blank_std: float = 10.0,
     verbose: bool = False,
 ) -> EventResult:
     eid = int(event["Id"])
     detail = client.get_event(eid)
-    frames = detail.get("Frame") or []
-    chosen = select_frames(frames, frame_type, sample_every)
+    frame_records = detail.get("Frame") or []
+    total_frames = int(event.get("Frames") or detail.get("Event", {}).get("Frames") or 0)
+    chosen = select_frame_ids(total_frames, frame_records, frame_type, sample_every)
 
     res = EventResult(
         event_id=eid,
@@ -341,27 +387,62 @@ def analyze_event(
         return res
 
     prev: np.ndarray | None = None
-    try:
-        for f in chosen:
-            fid = int(f["FrameId"])
+    prev_hash: int | None = None
+    for fid in chosen:
+        try:
             img = client.fetch_frame(eid, fid)
-            cur = crop_gray(img, region)
-            if prev is not None:
-                m = roi_diff(prev, cur, pixel_threshold)
-                res.frames_examined += 1
-                if m["changed_fraction"] > res.max_changed_fraction:
-                    res.max_changed_fraction = m["changed_fraction"]
-                    res.max_changed_pixels = m["changed_pixels"]
-                    res.peak_frame_id = fid
-                if verbose:
-                    print(
-                        f"    event {eid} frame {fid}: "
-                        f"changed={m['changed_fraction']*100:.2f}% "
-                        f"({int(m['changed_pixels'])}px) mean={m['mean_diff']:.1f}"
-                    )
-            prev = cur
-    except RuntimeError as exc:
-        res.error = str(exc)
+        except RuntimeError:
+            # A single unreadable frame shouldn't abort the whole event; skip
+            # it. The diff resumes from the next successfully fetched frame.
+            res.fetch_errors += 1
+            prev = None
+            continue
+
+        gray_full = np.asarray(img.convert("L"), dtype=np.float32)
+
+        # Skip ZoneMinder's "Failed getting frame" black placeholder, which zms
+        # serves (HTTP 200, valid JPEG) when it cannot extract a real frame.
+        if is_blank_frame(gray_full, blank_mean, blank_std):
+            res.blank_frames += 1
+            prev = None
+            continue
+
+        # Skip clamp/duplicate frames. zms clamps an out-of-range frame number
+        # to an existing frame, so consecutive byte-identical frames are not
+        # real motion data — drop them (they only ever yield zero diff anyway).
+        cur_hash = hash(gray_full.tobytes())
+        if prev_hash is not None and cur_hash == prev_hash:
+            res.duplicate_frames += 1
+            continue
+        prev_hash = cur_hash
+
+        cur = gray_full[region.y:region.y + region.h, region.x:region.x + region.w]
+        if prev is not None:
+            m = roi_diff(prev, cur, pixel_threshold)
+            res.frames_examined += 1
+            if m["changed_fraction"] > res.max_changed_fraction:
+                res.max_changed_fraction = m["changed_fraction"]
+                res.max_changed_pixels = m["changed_pixels"]
+                res.peak_frame_id = fid
+            if verbose:
+                print(
+                    f"    event {eid} frame {fid}: "
+                    f"changed={m['changed_fraction']*100:.2f}% "
+                    f"({int(m['changed_pixels'])}px) mean={m['mean_diff']:.1f}"
+                )
+        prev = cur
+
+    if res.frames_examined == 0:
+        res.error = (
+            f"no usable frames (blank={res.blank_frames}, "
+            f"dup={res.duplicate_frames}, fetch_errors={res.fetch_errors})"
+        )
+    elif verbose and (res.blank_frames or res.duplicate_frames or res.fetch_errors):
+        print(
+            f"    event {eid}: skipped {res.blank_frames} blank, "
+            f"{res.duplicate_frames} duplicate, {res.fetch_errors} unreadable; "
+            f"analyzed {res.frames_examined} pair(s)"
+        )
     return res
 
 
@@ -465,6 +546,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
             pixel_threshold=args.pixel_threshold,
             frame_type=args.frame_type,
             sample_every=args.sample_every,
+            blank_mean=args.blank_mean,
+            blank_std=args.blank_std,
             verbose=args.verbose,
         )
         results.append(r)
@@ -569,6 +652,16 @@ def build_parser() -> argparse.ArgumentParser:
     tune.add_argument(
         "--sample-every", type=int, default=1,
         help="Only examine every Nth selected frame (speeds up long events; default 1)",
+    )
+    tune.add_argument(
+        "--blank-mean", type=float, default=6.0,
+        help="Treat a frame as ZM's black 'Failed getting frame' placeholder if its "
+             "mean brightness is below this AND std is below --blank-std (default 6.0; "
+             "set 0 to disable placeholder skipping)",
+    )
+    tune.add_argument(
+        "--blank-std", type=float, default=10.0,
+        help="Std-dev half of the blank-frame test (default 10.0)",
     )
     sp.add_argument("--json-out", help="Write full per-event results to this JSON file")
     sp.add_argument("-v", "--verbose", action="store_true", help="Print per-frame diff metrics")

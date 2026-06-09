@@ -20,7 +20,8 @@ site-specific values are baked into the code.
 
 1. Authenticates to the ZoneMinder web API (token auth, ZM 1.34+).
 2. Lists events matching a monitor and time window.
-3. For each event, downloads its JPEG frames via the `zms` streaming CGI.
+3. For each event, downloads its JPEG frames via the `zms` streaming CGI,
+   iterating the event's full frame range (see "ZoneMinder frame quirks" below).
 4. Crops every frame to your ROI, converts to grayscale, and computes the
    absolute pixel difference between consecutive frames *inside the ROI only*.
 5. Flags events where the fraction of changed ROI pixels exceeds a threshold,
@@ -29,6 +30,30 @@ site-specific values are baked into the code.
 Because it works off the stored frames, **it can only analyze events whose
 recordings still exist on the server.** Events that ZoneMinder has already
 purged (or that were lost to a disk failure) have no frames to analyze.
+
+### ZoneMinder frame quirks (and how this tool handles them)
+
+Getting complete, accurate frame coverage out of ZoneMinder is surprisingly
+fiddly; this tool deals with three real behaviors observed on live installs:
+
+- **Sparse frame metadata.** The API's per-event `Frame[]` list only contains a
+  record for each *interesting* frame (alarm frames plus a little context) and
+  collapses the rest into sparse "Bulk" records — it is **not** a complete frame
+  list. Driving analysis off it would skip most of the recording. Instead, for a
+  full (`all`) scan this tool iterates the real `1..N` frame range (`N` = the
+  event's declared frame count), fetching each frame by number.
+- **Black "Failed getting frame" placeholders.** When `zms` cannot extract a
+  frame it still returns HTTP 200 with a valid JPEG — a near-black image reading
+  *"Failed getting frame"*. Treated naively, the jump from a real frame to this
+  black image looks like ~100% motion. The tool detects and skips these (see
+  `--blank-mean` / `--blank-std`).
+- **Out-of-range frame clamping / static duplicates.** Asking `zms` for a frame
+  number past the end of an event returns a copy of an existing frame, and a
+  genuinely static scene yields consecutive identical frames. Either way,
+  byte-identical consecutive frames carry no motion, so the tool skips them.
+
+The `scan` output reports how many frames were skipped as blank / duplicate so
+you can see what happened.
 
 ---
 
@@ -144,8 +169,16 @@ Two more flags control performance vs. thoroughness:
 
 | Flag             | Default | Effect                                                                                  |
 |------------------|---------|-----------------------------------------------------------------------------------------|
-| `--frame-type`   | `all`   | `all` examines every frame; `alarm` only examines ZM-flagged alarm frames (faster, but biased toward whatever zones *were* configured — usually you want `all` for non-zone regions). |
-| `--sample-every` | `1`     | Examine only every Nth frame. `--sample-every 3` is ~3× faster but may miss brief motion. |
+| `--frame-type`   | `all`   | `all` examines the event's full frame range; `alarm` only examines ZM-flagged alarm frames (faster, but biased toward whatever zones *were* configured — usually you want `all` for non-zone regions). |
+| `--sample-every` | `1`     | Examine only every Nth frame. `--sample-every 3` is ~3× faster but may miss brief motion. Each frame is a full-resolution JPEG fetched over HTTP (~0.5–1s each), so this is the main speed lever for long events. |
+
+Two advanced flags control the black-placeholder detector (see "ZoneMinder
+frame quirks"). You rarely need to touch these:
+
+| Flag           | Default | Effect                                                                          |
+|----------------|---------|---------------------------------------------------------------------------------|
+| `--blank-mean` | `6.0`   | A frame is treated as the "Failed getting frame" placeholder and skipped if its mean brightness is below this **and** its std is below `--blank-std`. Set `0` to disable placeholder skipping entirely. |
+| `--blank-std`  | `10.0`  | The standard-deviation half of the blank test. Requiring low std as well as low brightness prevents a genuinely dark-but-textured night frame from being discarded. |
 
 **Recommended workflow for tuning:** pick one event you *know* has the motion
 you care about and one you know doesn't, run `scan --event <id> --verbose` on
@@ -182,10 +215,15 @@ Run any command with `-h` for its full options, e.g. `python zm_motion.py scan -
   that moves, or auto-exposure/IR-cut transitions (day↔night), will register as
   ROI "motion." Pick an ROI and threshold that tolerate this, or restrict the
   time window.
-- **Purged recordings can't be analyzed:** if `scan` reports `ERROR: Failed to
-  fetch frame ...` or events show 0 frames, the underlying JPEGs/MP4s are gone
-  (retention, disk full, or hardware failure). The DB event record can survive
-  even when the pixel data does not.
+- **Purged recordings can't be analyzed:** if `scan` reports `no usable frames`
+  (all frames blank/duplicate/unreadable) or events show 0 frames, the underlying
+  JPEGs/MP4s are gone (retention, disk full, or hardware failure). The DB event
+  record can survive even when the pixel data does not.
+- **Lots of "blank" or "duplicate" skips is normal:** the per-event summary
+  counts frames skipped as ZM placeholders (blank) or static/clamped repeats
+  (duplicate). A static scene legitimately produces many duplicates — those carry
+  no motion, so skipping them costs nothing. If a *real* dark scene is being
+  wrongly skipped as blank, lower `--blank-mean` (or set it to `0` to disable).
 - **"no access_token returned":** your ZM is older than 1.34 or has API auth
   disabled. This tool only supports token auth.
 - **Login returns non-JSON / 404 on `/api/...`:** your `base_url` prefix is
