@@ -98,6 +98,7 @@ $EDITOR zm_config.json
 | `password`   | That user's password.                                                                            |
 | `verify_ssl` | Set to `false` only for self-signed certs you trust (insecure).                                  |
 | `timeout`    | Per-request timeout in seconds.                                                                  |
+| `cache_dir`  | Optional. Directory for the on-disk frame cache (see [Frame cache & resuming](#frame-cache--resuming)). Leave `""` to disable, or override per-run with `--cache-dir`. |
 
 `zm_config.json` is git-ignored so you won't accidentally commit credentials.
 You can also point at a different file with `--config path.json` or the
@@ -193,6 +194,50 @@ Use `--json-out results.json` to capture the peak metric for **every** event
 
 ---
 
+## Frame cache & resuming
+
+Downloading frames is by far the slowest part of a scan (each frame is a
+full-resolution JPEG fetched over HTTP, ~0.5–1s each), and a large time window
+can be **hundreds of thousands** of frames. To make big jobs practical and
+interruptible, the tool can cache frames on disk.
+
+Point it at a cache directory — either `--cache-dir PATH` (global flag, goes
+*before* the subcommand) or `"cache_dir"` in the config:
+
+```bash
+# Pre-download every frame in the window into the cache (resumable):
+python zm_motion.py --cache-dir /big/disk/zm-cache download \
+    --monitor 1 --start "2026-06-07 14:00:00" --end "2026-06-07 22:00:00"
+
+# Then scan — frames are read from disk, so this is fast and re-runnable:
+python zm_motion.py --cache-dir /big/disk/zm-cache scan \
+    --monitor 1 --start "2026-06-07 14:00:00" --end "2026-06-07 22:00:00" \
+    --region 1488,604,136,223 --json-out results.json
+```
+
+How it works:
+
+- Frames are stored as `<cache-dir>/<event_id>/<frame_id>.jpg`. Writes are
+  atomic (`.tmp` then rename), so an interrupted download never leaves a partial
+  file that a later run would trust.
+- `fetch_frame` reads the cache first; any command (`scan`, `save-frame`,
+  `download`) that needs a cached frame loads it from disk instead of the network.
+- **Resuming:** re-running `download` (or `scan`) skips frames already on disk,
+  so an interrupted run picks up where it left off — only the missing frames are
+  fetched.
+- `download` and `scan` should use the **same** `--frame-type` / `--sample-every`,
+  or just download at the default (full coverage) so any later scan sampling is
+  already cached. If a scan needs a frame that isn't cached, it simply downloads
+  (and caches) it on the fly.
+- Disk use: full-res JPEGs run ~600 KB each, so budget accordingly (e.g. ~600 MB
+  per 1000 frames). The cache is plain files — delete the directory (or a single
+  `<event_id>/` subdir) to reclaim space.
+
+Without a cache dir the tool behaves as before: frames are fetched into memory,
+used once, and discarded (nothing persists between runs).
+
+---
+
 ## Commands reference
 
 | Command            | Purpose                                                          |
@@ -202,8 +247,10 @@ Use `--json-out results.json` to capture the peak metric for **every** event
 | `save-frame`       | Download a single frame (defaults to the event's middle frame). |
 | `annotate-region`  | Draw an ROI box on an image to verify coordinates.              |
 | `scan`             | The main command: scan events for motion inside the ROI.        |
+| `download`         | Pre-fetch event frames into the cache dir (resumable).          |
 
 Run any command with `-h` for its full options, e.g. `python zm_motion.py scan -h`.
+The `--config` and `--cache-dir` flags are global and go *before* the subcommand.
 
 ---
 
@@ -229,7 +276,9 @@ Run any command with `-h` for its full options, e.g. `python zm_motion.py scan -
 - **Login returns non-JSON / 404 on `/api/...`:** your `base_url` prefix is
   wrong — try adding or removing a `/zm` segment.
 - **Slow scans:** large time windows × many frames = many HTTP fetches. Narrow
-  the window, raise `--sample-every`, or pre-filter with `list-events`.
+  the window, raise `--sample-every`, pre-filter with `list-events`, and use a
+  `--cache-dir` (plus the `download` command) so frames are fetched once and
+  reused — see [Frame cache & resuming](#frame-cache--resuming).
 
 ---
 

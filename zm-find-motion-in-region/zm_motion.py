@@ -55,6 +55,7 @@ class Config:
     password: str
     verify_ssl: bool = True
     timeout: int = 30
+    cache_dir: str | None = None
 
     @classmethod
     def load(cls, path: str) -> "Config":
@@ -75,6 +76,7 @@ class Config:
             password=data["password"],
             verify_ssl=data.get("verify_ssl", True),
             timeout=int(data.get("timeout", 30)),
+            cache_dir=data.get("cache_dir") or None,
         )
 
 
@@ -91,12 +93,15 @@ class ZMClient:
     install lives under '/zm', just include that in base_url in the config.
     """
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, cache_dir: str | None = None):
         self.cfg = cfg
         self.session = requests.Session()
         self.session.verify = cfg.verify_ssl
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
+        # Directory for the on-disk frame cache (None disables caching). Frames
+        # are stored as <cache_dir>/<event_id>/<frame_id>.jpg.
+        self.cache_dir = cache_dir or cfg.cache_dir
 
     # -- auth ------------------------------------------------------------- #
 
@@ -205,13 +210,30 @@ class ZMClient:
 
     # -- frames (images) -------------------------------------------------- #
 
-    def fetch_frame(self, event_id: int, frame_id: int) -> Image.Image:
-        """Fetch a single JPEG frame via the streaming CGI (zms 'single' mode).
+    def frame_cache_path(self, event_id: int, frame_id: int) -> str | None:
+        """Path this frame would occupy in the on-disk cache (None if disabled)."""
+        if not self.cache_dir:
+            return None
+        return os.path.join(self.cache_dir, str(event_id), f"{frame_id}.jpg")
 
-        Uses /cgi-bin/zms which is the portable way to pull one frame out of a
-        stored event. The web /index.php?view=image path is NOT used because it
-        404s on some installs.
+    def fetch_frame(self, event_id: int, frame_id: int) -> Image.Image:
+        """Return a single JPEG frame, reading the on-disk cache first.
+
+        Frames are fetched via /cgi-bin/zms (the portable way to pull one frame
+        out of a stored event; the web /index.php?view=image path 404s on some
+        installs). When a cache_dir is configured, a previously downloaded frame
+        is loaded from disk instead of re-fetched, and freshly downloaded frames
+        are written to disk — so an interrupted scan/download resumes without
+        re-downloading what it already has.
         """
+        cache_path = self.frame_cache_path(event_id, frame_id)
+        if cache_path and os.path.exists(cache_path):
+            try:
+                return Image.open(cache_path).convert("RGB")
+            except Exception:
+                # Corrupt/partial cache file — fall through and re-download.
+                pass
+
         token = self.login()
         url = (
             f"{self.cfg.base_url}/cgi-bin/zms"
@@ -223,6 +245,16 @@ class ZMClient:
                 f"Failed to fetch frame {frame_id} of event {event_id} "
                 f"(HTTP {resp.status_code}, {len(resp.content)} bytes)"
             )
+
+        if cache_path:
+            # Write atomically so an interrupted write never leaves a partial
+            # JPEG that a later run would treat as a valid cached frame.
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            tmp = f"{cache_path}.tmp"
+            with open(tmp, "wb") as fh:
+                fh.write(resp.content)
+            os.replace(tmp, cache_path)
+
         from io import BytesIO
         return Image.open(BytesIO(resp.content)).convert("RGB")
 
@@ -451,11 +483,16 @@ def analyze_event(
 # --------------------------------------------------------------------------- #
 
 
-def cmd_test_connection(args: argparse.Namespace) -> int:
+def make_client(args: argparse.Namespace) -> ZMClient:
+    """Build a ZMClient, letting a --cache-dir flag override the config value."""
     cfg = Config.load(args.config)
-    client = ZMClient(cfg)
+    return ZMClient(cfg, cache_dir=getattr(args, "cache_dir", None))
+
+
+def cmd_test_connection(args: argparse.Namespace) -> int:
+    client = make_client(args)
     token = client.login()
-    print(f"OK — authenticated to {cfg.base_url}")
+    print(f"OK — authenticated to {client.cfg.base_url}")
     print(f"Access token (truncated): {token[:24]}...")
     # Sanity check an API read.
     version = client._api_get("/api/host/getVersion.json")
@@ -464,8 +501,7 @@ def cmd_test_connection(args: argparse.Namespace) -> int:
 
 
 def cmd_list_events(args: argparse.Namespace) -> int:
-    cfg = Config.load(args.config)
-    client = ZMClient(cfg)
+    client = make_client(args)
     events = client.list_events(args.monitor, args.start, args.end, args.min_duration)
     if not events:
         print("No events matched.")
@@ -483,8 +519,7 @@ def cmd_list_events(args: argparse.Namespace) -> int:
 
 
 def cmd_save_frame(args: argparse.Namespace) -> int:
-    cfg = Config.load(args.config)
-    client = ZMClient(cfg)
+    client = make_client(args)
     frame_id = args.frame
     if frame_id is None:
         # Default to a middle frame so the user gets a representative image.
@@ -518,8 +553,7 @@ def cmd_annotate_region(args: argparse.Namespace) -> int:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
-    cfg = Config.load(args.config)
-    client = ZMClient(cfg)
+    client = make_client(args)
     region = Region.parse(args.region)
 
     if args.event:
@@ -531,11 +565,12 @@ def cmd_scan(args: argparse.Namespace) -> int:
         print("No events matched.")
         return 0
 
+    cache_note = f", cache={client.cache_dir}" if client.cache_dir else ""
     print(
         f"Scanning {len(events)} event(s) for motion in ROI "
         f"{region.x},{region.y} {region.w}x{region.h} "
         f"(pixel_threshold={args.pixel_threshold}, frames={args.frame_type}, "
-        f"sample_every={args.sample_every})\n"
+        f"sample_every={args.sample_every}{cache_note})\n"
     )
 
     results: list[EventResult] = []
@@ -585,6 +620,85 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_download(args: argparse.Namespace) -> int:
+    """Pre-fetch frames into the on-disk cache so a later scan reads from disk.
+
+    Downloading frames is by far the slowest part of a scan, so this lets you
+    fill the cache up front (and resume if interrupted — already-cached frames
+    are skipped). Use the SAME --frame-type/--sample-every here as you will for
+    the scan, or the default full coverage, so the scan actually hits the cache.
+    """
+    client = make_client(args)
+    if not client.cache_dir:
+        sys.exit("download requires a cache directory: pass --cache-dir or set cache_dir in the config.")
+
+    if args.event:
+        events = [client.get_event(args.event)["Event"]]
+    else:
+        events = client.list_events(args.monitor, args.start, args.end, args.min_duration)
+    if not events:
+        print("No events matched.")
+        return 0
+
+    # Plan the work so we can show meaningful progress.
+    plan: list[tuple[int, list[int]]] = []
+    for ev in events:
+        eid = int(ev["Id"])
+        total = int(ev.get("Frames") or 0)
+        # We don't need the (extra) per-frame API call here; frame_type 'alarm'
+        # is rarely used with download, but support it by reading records then.
+        if args.frame_type == "alarm":
+            recs = client.get_event(eid).get("Frame") or []
+            ids = select_frame_ids(total, recs, "alarm", args.sample_every)
+        else:
+            ids = select_frame_ids(total, [], "all", args.sample_every)
+        plan.append((eid, ids))
+
+    total_planned = sum(len(ids) for _, ids in plan)
+    print(
+        f"Downloading frames for {len(events)} event(s) into {client.cache_dir}\n"
+        f"  frame_type={args.frame_type}, sample_every={args.sample_every}, "
+        f"~{total_planned} frames planned\n"
+    )
+
+    downloaded = cached = errors = 0
+    done = 0
+    for i, (eid, ids) in enumerate(plan, 1):
+        ev_dl = ev_cached = ev_err = 0
+        for fid in ids:
+            done += 1
+            path = client.frame_cache_path(eid, fid)
+            if path and os.path.exists(path):
+                cached += 1
+                ev_cached += 1
+                continue
+            try:
+                client.fetch_frame(eid, fid)  # downloads and writes to cache
+                downloaded += 1
+                ev_dl += 1
+            except RuntimeError:
+                errors += 1
+                ev_err += 1
+            if done % 200 == 0:
+                print(
+                    f"  ... {done}/{total_planned} frames "
+                    f"(downloaded={downloaded}, cached={cached}, errors={errors})",
+                    flush=True,
+                )
+        print(
+            f"[{i}/{len(plan)}] event {eid}: "
+            f"downloaded {ev_dl}, already-cached {ev_cached}, errors {ev_err} "
+            f"({len(ids)} frames)",
+            flush=True,
+        )
+
+    print(
+        f"\nDone. downloaded={downloaded}, already-cached={cached}, errors={errors} "
+        f"of {total_planned} planned frames.\nCache: {client.cache_dir}"
+    )
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
@@ -598,6 +712,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--config", default=DEFAULT_CONFIG_PATH,
         help=f"Path to JSON config (default: {DEFAULT_CONFIG_PATH} or $ZM_CONFIG)",
+    )
+    p.add_argument(
+        "--cache-dir", default=None,
+        help="Directory for the on-disk frame cache (overrides 'cache_dir' in the "
+             "config). Frames are stored as <cache-dir>/<event_id>/<frame_id>.jpg and "
+             "reused on later runs, so scans/downloads resume without re-downloading.",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -666,6 +786,28 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json-out", help="Write full per-event results to this JSON file")
     sp.add_argument("-v", "--verbose", action="store_true", help="Print per-frame diff metrics")
     sp.set_defaults(func=cmd_scan)
+
+    # download
+    sp = sub.add_parser(
+        "download",
+        help="Pre-fetch event frames into the cache dir (so a later scan reads from disk).",
+    )
+    sp.add_argument("--event", type=int, help="Download a single event ID (overrides the filters below)")
+    sp.add_argument("--monitor", type=int, help="Monitor ID")
+    sp.add_argument("--start", help="StartTime >= (ZM server local time)")
+    sp.add_argument("--end", help="StartTime <= (ZM server local time)")
+    sp.add_argument("--min-duration", type=float, help="Only events at least N seconds long")
+    sp.add_argument(
+        "--frame-type", choices=["all", "alarm"], default="all",
+        help="Download the full frame range or only ZM 'alarm' frames (default all). "
+             "Use the same value you will pass to 'scan'.",
+    )
+    sp.add_argument(
+        "--sample-every", type=int, default=1,
+        help="Download only every Nth frame (default 1 = all). Use the same value you "
+             "will pass to 'scan', or the default so any scan sampling hits the cache.",
+    )
+    sp.set_defaults(func=cmd_download)
 
     return p
 

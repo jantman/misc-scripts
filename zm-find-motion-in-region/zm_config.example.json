@@ -3,5 +3,6 @@
   "username": "REPLACE_WITH_ZM_USERNAME",
   "password": "REPLACE_WITH_ZM_PASSWORD",
   "verify_ssl": true,
-  "timeout": 30
+  "timeout": 30,
+  "cache_dir": ""
 }
