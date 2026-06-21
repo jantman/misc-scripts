@@ -76,6 +76,18 @@ class MagicJSONEncoder(JSONEncoder):
         return super(MagicJSONEncoder, self).default(o)
 
 
+def _ip_sort_key(value):
+    """Sort key that orders IP addresses numerically.
+
+    Falls back to a string-based key for values that aren't valid IPv4
+    addresses, so a malformed/empty entry can't break sorting.
+    """
+    try:
+        return (0, int(IPv4Address(value)))
+    except (ValueError, TypeError):
+        return (1, str(value))
+
+
 class UniFiBackup:
 
     # from: https://github.com/zhangyoufu/unifi-backup-decrypt
@@ -115,6 +127,7 @@ class UniFiBackup:
             'title': 'Fixed IP Leases',
             'collection': '__fixedip',
             'sort': 'ipaddr',
+            'sort_ip': True,
             'fields': ['IP', 'Name', 'MAC', 'Network', 'WLAN']
         },
         {
@@ -561,7 +574,7 @@ class UniFiBackup:
             ) + '\n'
         s += '\n## Users (Clients) with Fixed IPs\n\n'
         users = [x for x in data['user'].values() if x.get('fixed_ip', '') != '']
-        for r in sorted(users, key=lambda x: x['fixed_ip']):
+        for r in sorted(users, key=lambda x: _ip_sort_key(x['fixed_ip'])):
             net = data["networkconf"].get(
                 r.get('network_id'), {}
             ).get('name', r.get('network_id', 'unknown'))
@@ -619,9 +632,13 @@ class UniFiBackup:
         for conf in self.MARKDOWN_SUMMARY_TABLES:
             prefix += f'\n## {conf["title"]}\n\n'
             rows = []
+            if conf.get('sort_ip'):
+                sort_key = lambda x: _ip_sort_key(x[conf['sort']])
+            else:
+                sort_key = lambda x: x[conf['sort']]
             for item in sorted(
                 data[conf['collection']].values(),
-                key=lambda x: x[conf['sort']]
+                key=sort_key
             ):
                 rows.append([item.get(x) for x in conf['fields']])
             prefix += tabulate(
