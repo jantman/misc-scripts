@@ -83,7 +83,154 @@ logging.basicConfig(
 )
 logger: logging.Logger = logging.getLogger()
 
-SEMVER_ANYWHERE_RE: re.Pattern = re.compile(r'^.*\d+\.\d+\.\d+.*$')
+# --- Version parsing, comparison & severity -------------------------------
+
+#: Tags that are pre-release / dev / beta / rc builds and must never be
+#: treated as the "newest version". Matches word markers delimited by a
+#: separator/boundary, plus the CalVer/semver beta form (e.g. "2026.5.0b1",
+#: "1.2.3a4" -> "0b1"/"3a4").
+PRERELEASE_RE: re.Pattern = re.compile(
+    r'(?:^|[-._+/])'
+    r'(?:dev|devel|develop|alpha|beta|rc|pre|preview|nightly|snapshot|'
+    r'canary|edge|unstable|insider|insiders)'
+    r'(?:[-._/]|\d|$)'
+    r'|\d+[ab]\d+$',
+    re.IGNORECASE
+)
+
+#: OS / flavor / build-variant markers that indicate a non-canonical image
+#: (e.g. "1.30.0-trixie-perl", "8.0.21-windowsservercore-ltsc2025",
+#: "13.1.0-25295570271-ubuntu", "v3.11.3-distroless").
+VARIANT_RE: re.Pattern = re.compile(
+    r'(?:^|[-._])'
+    r'(?:alpine|ubuntu|debian|jammy|noble|focal|bionic|bookworm|bullseye|'
+    r'trixie|buster|slim|perl|distroless|otel|fpm|apache|ubi\d*|'
+    r'windowsservercore|nanoserver|servercore|ltsc\d*|mainline|windows|'
+    r'amd64|arm64|arm32|armv7|armhf|x86[-_]64|s390x|ppc64le|'
+    r'jre\d*|jdk\d*|openjdk|corretto|zulu|graal|temurin|oracle)'
+    r'(?:[-._]|\d|$)',
+    re.IGNORECASE
+)
+
+#: Signature / attestation / bare-digest tags that are not runnable versions
+#: (e.g. "sha256-....sig", a bare 40/64-char git/image digest).
+SIG_RE: re.Pattern = re.compile(
+    r'\.sig$|\.att$|^sha256[-:]|^[0-9a-f]{40}$|^[0-9a-f]{64}$',
+    re.IGNORECASE
+)
+
+#: Extracts the first dotted-number run (the version core) from a tag.
+VERSION_CORE_RE: re.Pattern = re.compile(r'(\d+(?:\.\d+)+)')
+
+#: Severity level -> background color (email-safe pastels, black text
+#: readable), ordered least -> most severe.
+SEVERITY_COLORS: Dict[str, str] = {
+    'current': '#c8e6c9',   # green
+    'patch': '#dcedc8',     # yellow-green
+    'minor': '#fff9c4',     # yellow
+    'major': '#ffe0b2',     # orange
+    'critical': '#ffcdd2',  # red
+    'unknown': '#eceff1',   # gray
+}
+
+#: (level, human description) pairs for the report legend.
+SEVERITY_LEGEND: List[Tuple[str, str]] = [
+    ('current', 'Up to date'),
+    ('patch', 'Patch version behind'),
+    ('minor', 'Minor version behind'),
+    ('major', 'One major version (or ~6-12 months) behind'),
+    ('critical', 'Multiple major versions (or over a year) behind'),
+    ('unknown', 'Could not determine'),
+]
+
+
+def is_signature_tag(tag: Optional[str]) -> bool:
+    """True if `tag` is a signature/attestation/bare-digest, not a real tag."""
+    return bool(tag and SIG_RE.search(tag))
+
+
+def is_clean_version_tag(tag: Optional[str]) -> bool:
+    """True if `tag` looks like a stable, non-variant release version."""
+    if not tag:
+        return False
+    if is_signature_tag(tag):
+        return False
+    if PRERELEASE_RE.search(tag):
+        return False
+    if VARIANT_RE.search(tag):
+        return False
+    return bool(VERSION_CORE_RE.search(tag))
+
+
+def parse_version_tag(tag: Optional[str]) -> Optional[Tuple[int, ...]]:
+    """Return the numeric version core of `tag` as a tuple of ints, or None.
+
+    Tolerates a leading ``v``/``version-`` and trailing build/flavor text by
+    extracting the first dotted-number run, e.g. ``v0.22.1275-ls648`` ->
+    ``(0, 22, 1275)`` and CalVer ``2026.2.4`` -> ``(2026, 2, 4)``.
+    """
+    if not tag:
+        return None
+    m = VERSION_CORE_RE.search(tag)
+    if not m:
+        return None
+    try:
+        return tuple(int(x) for x in m.group(1).split('.'))
+    except ValueError:
+        return None
+
+
+def version_distance_severity(
+    cur: Tuple[int, ...], new: Tuple[int, ...]
+) -> Tuple[str, str]:
+    """Severity level + human label from comparing two version tuples.
+
+    The first differing component decides the tier: index 0 is "major" (year
+    for CalVer), index 1 is "minor" (month for CalVer), the rest are "patch".
+    """
+    n = max(len(cur), len(new))
+    cur = cur + (0,) * (n - len(cur))
+    new = new + (0,) * (n - len(new))
+    if cur >= new:
+        return 'current', 'up to date'
+    idx = next(i for i in range(n) if cur[i] != new[i])
+    if idx == 0:
+        majors = new[0] - cur[0]
+        if majors >= 2:
+            return 'critical', f'{majors} major versions behind'
+        return 'major', '1 major version behind'
+    if idx == 1:
+        return 'minor', 'minor version(s) behind'
+    return 'patch', 'patch version(s) behind'
+
+
+def age_severity(delta: timedelta) -> Tuple[str, str]:
+    """Severity level + label from how far behind (by time) something is.
+
+    Used as a fallback when the running and newest tags are not both parseable
+    as comparable version numbers.
+    """
+    label = f'{naturaldelta(delta)} behind'
+    days = delta.days
+    if days < 30:
+        return 'current', label
+    if days < 182:
+        return 'minor', label
+    if days < 365:
+        return 'major', label
+    return 'critical', label
+
+
+def severity_legend_html() -> str:
+    """Render the color-key legend shared by both reports."""
+    cells = ''.join(
+        f'<span style="display:inline-block; padding:2px 8px; margin:2px; '
+        f'border:1px solid #999; background-color:{SEVERITY_COLORS[key]};">'
+        f'{label}</span>'
+        for key, label in SEVERITY_LEGEND
+    )
+    return f'<p><strong>Legend:</strong> {cells}</p>\n'
+
 
 UNKNOWN_DATE: datetime = datetime.fromtimestamp(1, tz=timezone.utc)
 
@@ -167,17 +314,21 @@ class DockerHubImage(Image):
         while True:
             resp = self._do_get(url).json()
             if not self.newest_tag:
-                self.newest_tag = resp['results'][0]['name']
-                self.tag_dates[resp['results'][0]['name']] = parse(
-                    resp['results'][0]['tag_last_pushed']
-                )
-                logger.info(
-                    'Found newest tag as: %s at %s',
-                    self.newest_tag, self.tag_dates[self.newest_tag]
-                )
+                # Skip signature/attestation tags (e.g. "sha256-....sig")
+                # which sort to the top but are not runnable images.
+                for tag in resp['results']:
+                    if is_signature_tag(tag['name']):
+                        continue
+                    self.newest_tag = tag['name']
+                    self.tag_dates[tag['name']] = parse(tag['tag_last_pushed'])
+                    logger.info(
+                        'Found newest tag as: %s at %s',
+                        self.newest_tag, self.tag_dates[self.newest_tag]
+                    )
+                    break
             if not self.newest_version_tag:
                 for tag in resp['results']:
-                    if SEMVER_ANYWHERE_RE.match(tag['name']):
+                    if is_clean_version_tag(tag['name']):
                         self.newest_version_tag = tag['name']
                         self.tag_dates[tag['name']] = parse(tag['tag_last_pushed'])
                         logger.info(
@@ -293,17 +444,22 @@ class GhcrImage(Image):
         cont: GhcrContainer
         for cont in sorted(tagged_versions, key=lambda x: x.date, reverse=True):
             if not self.newest_tag:
-                self.newest_tag = cont.tags[0]
+                # Skip signature/attestation tags; pick the first real tag.
+                for tag in cont.tags:
+                    if not is_signature_tag(tag):
+                        self.newest_tag = tag
+                        break
             for tag in cont.tags:
-                if SEMVER_ANYWHERE_RE.match(tag) and not self.newest_version_tag:
+                if is_clean_version_tag(tag) and not self.newest_version_tag:
                     self.newest_version_tag = tag
                 self.tag_dates[tag] = cont.date
                 if tag in self.image_versions:
                     self.image_versions[tag].tag_date = cont.date
-        logger.info(
-            'Found newest tag as: %s at %s',
-            self.newest_tag, self.tag_dates[self.newest_tag]
-        )
+        if self.newest_tag:
+            logger.info(
+                'Found newest tag as: %s at %s',
+                self.newest_tag, self.tag_dates.get(self.newest_tag)
+            )
         logger.debug(
             'Image %s newest_tag=%s tag_dates=%s tagged_versions=%s',
             self.name, self.newest_tag, self.tag_dates,
@@ -395,8 +551,11 @@ def th(s):
     return '<th style="border: 1px solid black;">%s</th>' % s
 
 
-def td(s):
-    return '<td style="border: 1px solid black; padding: 1em;">%s</td>' % s
+def td(s, bg: Optional[str] = None):
+    style = 'border: 1px solid black; padding: 1em;'
+    if bg:
+        style += f' background-color: {bg};'
+    return f'<td style="{style}">{s}</td>'
 
 
 def _json_default(o):
@@ -734,7 +893,7 @@ class GlpiDockerReport:
             vm: VirtualMachine
             for vm in iver.vms:
                 hosts[vm.computer.name].append(vm.name)
-            result.append({
+            row = {
                 'Image': img.name,
                 'ImageLink': img.link,
                 'ImageNewestTag': img.newest_tag,
@@ -747,8 +906,45 @@ class GlpiDockerReport:
                 'TagLink': img.link_for_tag(iver.tag),
                 'Date': iver.tag_date,
                 'Hosts': dict(hosts),
-            })
+            }
+            row['Severity'], row['Status'] = self._severity_for_row(row)
+            result.append(row)
         return result
+
+    @staticmethod
+    def _severity_for_row(row: Dict) -> Tuple[str, str]:
+        """Determine (severity_level, human status) for one image/tag row.
+
+        Prefers version-number distance between the running tag and the newest
+        stable version; falls back to how far behind (by time) the running
+        image is when the tags are not both parseable as versions.
+        """
+        cur = parse_version_tag(row['Tag'])
+        new = (
+            parse_version_tag(row['ImageNewestVer'])
+            if row['ImageNewestVer'] else None
+        )
+        if cur and new:
+            return version_distance_severity(cur, new)
+        run_date = row['Date']
+        new_date = row['ImageNewestVerDate']
+        if run_date and run_date != UNKNOWN_DATE:
+            if new_date and new_date > run_date:
+                return age_severity(new_date - run_date)
+            return age_severity(NOW - run_date)
+        return 'unknown', 'unknown'
+
+    @staticmethod
+    def _newest_cell(
+        tag: Optional[str], link: Optional[str], date: Optional[datetime]
+    ) -> str:
+        """Render a 'newest tag/version' cell with a link and relative age."""
+        if not tag:
+            return 'unknown'
+        label = f'<a href="{link}">{tag}</a>' if link else tag
+        if date and date != UNKNOWN_DATE:
+            return f'{label} ({naturaldelta(NOW - date)} ago)'
+        return f'{label} (unknown age)'
 
     def _generate_html(self, rows: List[Dict], skip_names: List[str]) -> str:
         html = ('<html><head>'
@@ -769,56 +965,51 @@ class GlpiDockerReport:
                 '<p>Skipped the following hosts based on command line argument:'
                 f' {", ".join(sorted(skip_names))}</p>\n'
             )
+        html += severity_legend_html()
         html += ('<table style="border: 1px solid black; '
                  'border-collapse: collapse;">\n')
         html += '<thead><tr>'
         html += th('Image')
         html += th('Tag')
+        html += th('Status')
         html += th('Age')
         html += th('Hosts')
         html += th('Newest Tag')
-        html += th('Newest SemVer Tag')
+        html += th('Newest Version')
         html += '</tr></thead>\n'
         html += '<tbody>\n'
         curr_name = ''
         for row in rows:
+            bg = SEVERITY_COLORS.get(row['Severity'], SEVERITY_COLORS['unknown'])
             html += '<tr>'
             if curr_name != row['Image']:
-                html += td(f'<a href="{row["ImageLink"]}">{row["Image"]}</a>')
+                html += td(
+                    f'<a href="{row["ImageLink"]}">{row["Image"]}</a>', bg
+                )
                 curr_name = row['Image']
             else:
-                html += td('&nbsp;')
-            html += td(f'<a href="{row["TagLink"]}">{row["Tag"]}</a>')
+                html += td('&nbsp;', bg)
+            html += td(f'<a href="{row["TagLink"]}">{row["Tag"]}</a>', bg)
+            html += td(row['Status'], bg)
             if row['Date'] == UNKNOWN_DATE:
-                html += td('unknown')
+                html += td('unknown', bg)
             else:
-                html += td(naturaldelta(NOW - row['Date']))
+                html += td(naturaldelta(NOW - row['Date']), bg)
             html += td(
                 '; '.join([
                     f'{x} ({", ".join(sorted(row["Hosts"][x]))})'
                     for x in sorted(row['Hosts'].keys())
-                ])
+                ]),
+                bg
             )
-            if row["ImageNewestTagDate"]:
-                html += td(
-                    f'<a href="{row["ImageNewestTagLink"]}">{row["ImageNewestTag"]}</a>'
-                    f' ({naturaldelta(NOW - row["ImageNewestTagDate"])} ago)'
-                )
-            else:
-                html += td(
-                    f'<a href="{row["ImageNewestTagLink"]}">{row["ImageNewestTag"]}</a>'
-                    ' (unknown age)'
-                )
-            if row["ImageNewestVerDate"]:
-                html += td(
-                    f'<a href="{row["ImageNewestVerLink"]}">{row["ImageNewestVer"]}</a>'
-                    f' ({naturaldelta(NOW - row["ImageNewestVerDate"])} ago)'
-                )
-            else:
-                html += td(
-                    f'<a href="{row["ImageNewestVerLink"]}">{row["ImageNewestVer"]}</a>'
-                    ' (unknown age)'
-                )
+            html += td(self._newest_cell(
+                row['ImageNewestTag'], row['ImageNewestTagLink'],
+                row['ImageNewestTagDate']
+            ), bg)
+            html += td(self._newest_cell(
+                row['ImageNewestVer'], row['ImageNewestVerLink'],
+                row['ImageNewestVerDate']
+            ), bg)
             html += '</tr>\n'
         html += '</tbody>\n'
         html += '</table>\n'

@@ -65,6 +65,83 @@ NOW: datetime = datetime.now(tz=timezone.utc)
 MAX_INVENTORY_AGE: timedelta = timedelta(days=30)
 
 
+# --- Version comparison & severity ----------------------------------------
+
+#: Extracts the first dotted-number run (the version core) from a version str.
+VERSION_CORE_RE: re.Pattern = re.compile(r'(\d+(?:\.\d+)+)')
+
+#: Severity level -> background color (email-safe pastels, black text
+#: readable), ordered least -> most severe.
+SEVERITY_COLORS: Dict[str, str] = {
+    'current': '#c8e6c9',   # green
+    'patch': '#dcedc8',     # yellow-green
+    'minor': '#fff9c4',     # yellow
+    'major': '#ffe0b2',     # orange
+    'critical': '#ffcdd2',  # red
+    'unknown': '#eceff1',   # gray
+}
+
+#: (level, human description) pairs for the report legend.
+SEVERITY_LEGEND: List = [
+    ('current', 'Up to date'),
+    ('patch', 'Patch version behind'),
+    ('minor', 'Minor version behind'),
+    ('major', 'One major version behind'),
+    ('critical', 'Multiple majors behind, or past end-of-life'),
+    ('unknown', 'Could not determine'),
+]
+
+
+def parse_version_tag(version: Optional[str]):
+    """Return the numeric version core of `version` as a tuple of ints, or None.
+
+    Extracts the first dotted-number run, tolerating suffixes, e.g.
+    ``13.1`` -> ``(13, 1)`` and Arch kernel ``6.19.11-arch1-1`` -> ``(6, 19, 11)``.
+    """
+    if not version:
+        return None
+    m = VERSION_CORE_RE.search(version)
+    if not m:
+        return None
+    try:
+        return tuple(int(x) for x in m.group(1).split('.'))
+    except ValueError:
+        return None
+
+
+def version_distance_severity(cur, new):
+    """Severity level + human label from comparing two version tuples.
+
+    The first differing component decides the tier: index 0 is "major", index 1
+    is "minor", the rest are "patch".
+    """
+    n = max(len(cur), len(new))
+    cur = cur + (0,) * (n - len(cur))
+    new = new + (0,) * (n - len(new))
+    if cur >= new:
+        return 'current', 'up to date'
+    idx = next(i for i in range(n) if cur[i] != new[i])
+    if idx == 0:
+        majors = new[0] - cur[0]
+        if majors >= 2:
+            return 'critical', f'{majors} major versions behind'
+        return 'major', '1 major version behind'
+    if idx == 1:
+        return 'minor', 'minor version(s) behind'
+    return 'patch', 'patch version(s) behind'
+
+
+def severity_legend_html() -> str:
+    """Render the color-key legend for the report."""
+    cells = ''.join(
+        f'<span style="display:inline-block; padding:2px 8px; margin:2px; '
+        f'border:1px solid #999; background-color:{SEVERITY_COLORS[key]};">'
+        f'{label}</span>'
+        for key, label in SEVERITY_LEGEND
+    )
+    return f'<p><strong>Legend:</strong> {cells}</p>\n'
+
+
 class OperatingSystem:
     """OS distribution data from endoflife.date."""
 
@@ -241,8 +318,11 @@ def th(s):
     return '<th style="border: 1px solid black;">%s</th>' % s
 
 
-def td(s):
-    return '<td style="border: 1px solid black; padding: 1em;">%s</td>' % s
+def td(s, bg: Optional[str] = None):
+    style = 'border: 1px solid black; padding: 1em;'
+    if bg:
+        style += f' background-color: {bg};'
+    return f'<td style="{style}">{s}</td>'
 
 
 def _json_default(o):
@@ -597,8 +677,33 @@ class GlpiOsReport:
                 )
                 row['NewestVersion'] = self.arch_kernel.version
                 row['NewestCycleReleased'] = self.arch_kernel.last_update
+            row['Severity'], row['Status'] = self._severity_for_row(row)
             rows.append(row)
         return rows
+
+    @staticmethod
+    def _severity_for_row(row: Dict):
+        """Determine (severity_level, human status) for one host row.
+
+        A past end-of-life date dominates (critical); otherwise the severity is
+        the version-number distance between the running and newest versions.
+        """
+        eol = row['CurrentCycleEol']
+        if isinstance(eol, datetime) and eol < NOW:
+            return 'critical', f'EOL {naturaldelta(NOW - eol)} ago'
+        cur = parse_version_tag(row['OsVersion'])
+        new = (
+            parse_version_tag(row['NewestVersion'])
+            if row['NewestVersion'] else None
+        )
+        if cur and new:
+            level, desc = version_distance_severity(cur, new)
+            if eol is True and level == 'current':
+                return 'critical', 'end of life'
+            return level, desc
+        if eol is True:
+            return 'critical', 'end of life'
+        return 'unknown', 'unknown'
 
     def _generate_html(self, rows: List[Dict], skip_names: List[str]) -> str:
         html = ('<html><head>'
@@ -624,10 +729,12 @@ class GlpiOsReport:
                 '<p>Skipped the following hosts based on command line argument:'
                 f' {", ".join(sorted(skip_names))}</p>\n'
             )
+        html += severity_legend_html()
         html += ('<table style="border: 1px solid black; '
                  'border-collapse: collapse;">\n')
         html += '<thead><tr>'
         html += th('Host')
+        html += th('Status')
         html += th('Last Inventory')
         html += th('Distribution')
         html += th('Current Version')
@@ -638,19 +745,22 @@ class GlpiOsReport:
         html += th('Newest Released')
         html += '</tr></thead>\n<tbody>\n'
         for row in rows:
+            bg = SEVERITY_COLORS.get(row['Severity'], SEVERITY_COLORS['unknown'])
             html += '<tr>'
-            html += td(row['Host'])
+            html += td(row['Host'], bg)
+            html += td(row['Status'], bg)
             li = row['LastInventory']
             html += td(
                 f'{li.date().isoformat()} '
-                f'({naturaldelta(NOW - li)} ago)'
+                f'({naturaldelta(NOW - li)} ago)',
+                bg
             )
             if not row['Distribution']:
-                html += td('unknown') * 7
+                html += td('unknown', bg) * 7
                 html += '</tr>\n'
                 continue
-            html += td(row['Distribution'])
-            html += td(row['OsVersion'] or 'unknown')
+            html += td(row['Distribution'], bg)
+            html += td(row['OsVersion'] or 'unknown', bg)
             if row['IsRolling']:
                 if row['NewestVersion']:
                     # Rolling distro with a specific comparison (e.g. Arch
@@ -661,70 +771,76 @@ class GlpiOsReport:
                     if isinstance(ovr, datetime):
                         html += td(
                             f'{ovr.date().isoformat()} '
-                            f'({naturaldelta(NOW - ovr)} ago)'
+                            f'({naturaldelta(NOW - ovr)} ago)',
+                            bg
                         )
                     else:
-                        html += td('rolling release')
-                    html += td('rolling release')
-                    html += td('kernel')
-                    html += td(row['NewestVersion'])
+                        html += td('rolling release', bg)
+                    html += td('rolling release', bg)
+                    html += td('kernel', bg)
+                    html += td(row['NewestVersion'], bg)
                     ncr = row['NewestCycleReleased']
                     if isinstance(ncr, datetime):
                         html += td(
                             f'{ncr.date().isoformat()} '
-                            f'({naturaldelta(NOW - ncr)} ago)'
+                            f'({naturaldelta(NOW - ncr)} ago)',
+                            bg
                         )
                     else:
-                        html += td('unknown')
+                        html += td('unknown', bg)
                 else:
-                    html += td('rolling release') * 5
+                    html += td('rolling release', bg) * 5
                 html += '</tr>\n'
                 continue
             if not row['EndoflifeProduct'] or row['CurrentCycle'] is None:
                 # Couldn't resolve cycle data (no mapping or no matching cycle)
                 if row['NewestCycle'] is None:
-                    html += td('unknown') * 5
+                    html += td('unknown', bg) * 5
                     html += '</tr>\n'
                     continue
-                html += td('unknown') * 2
+                html += td('unknown', bg) * 2
             else:
                 rel = row['CurrentCycleReleased']
                 if isinstance(rel, datetime):
                     html += td(
                         f'{rel.date().isoformat()} '
-                        f'({naturaldelta(NOW - rel)} ago)'
+                        f'({naturaldelta(NOW - rel)} ago)',
+                        bg
                     )
                 else:
-                    html += td('unknown')
+                    html += td('unknown', bg)
                 eol = row['CurrentCycleEol']
                 if isinstance(eol, datetime):
                     delta = eol - NOW
                     if delta.total_seconds() < 0:
                         html += td(
                             f'{eol.date().isoformat()} '
-                            f'(EOL {naturaldelta(-delta)} ago)'
+                            f'(EOL {naturaldelta(-delta)} ago)',
+                            bg
                         )
                     else:
                         html += td(
                             f'{eol.date().isoformat()} '
-                            f'(in {naturaldelta(delta)})'
+                            f'(in {naturaldelta(delta)})',
+                            bg
                         )
                 elif eol is True:
-                    html += td('EOL')
+                    html += td('EOL', bg)
                 elif eol is False:
-                    html += td('no EOL set')
+                    html += td('no EOL set', bg)
                 else:
-                    html += td('unknown')
-            html += td(str(row['NewestCycle'] or 'unknown'))
-            html += td(str(row['NewestVersion'] or 'unknown'))
+                    html += td('unknown', bg)
+            html += td(str(row['NewestCycle'] or 'unknown'), bg)
+            html += td(str(row['NewestVersion'] or 'unknown'), bg)
             ncr = row['NewestCycleReleased']
             if isinstance(ncr, datetime):
                 html += td(
                     f'{ncr.date().isoformat()} '
-                    f'({naturaldelta(NOW - ncr)} ago)'
+                    f'({naturaldelta(NOW - ncr)} ago)',
+                    bg
                 )
             else:
-                html += td('unknown')
+                html += td('unknown', bg)
             html += '</tr>\n'
         html += '</tbody>\n</table>\n'
         html += _json_block(rows)
