@@ -916,8 +916,11 @@ class GlpiDockerReport:
         """Determine (severity_level, human status) for one image/tag row.
 
         Prefers version-number distance between the running tag and the newest
-        stable version; falls back to how far behind (by time) the running
-        image is when the tags are not both parseable as versions.
+        stable version. When the tags are not both parseable as versions, falls
+        back to the time gap between the running image and the newest available
+        image (newest version, else newest tag) -- NOT the running image's
+        absolute age, so an image that simply has not been rebuilt in a long
+        time but is still the newest available reads as up to date.
         """
         cur = parse_version_tag(row['Tag'])
         new = (
@@ -927,11 +930,20 @@ class GlpiDockerReport:
         if cur and new:
             return version_distance_severity(cur, new)
         run_date = row['Date']
-        new_date = row['ImageNewestVerDate']
-        if run_date and run_date != UNKNOWN_DATE:
-            if new_date and new_date > run_date:
-                return age_severity(new_date - run_date)
-            return age_severity(NOW - run_date)
+        # Newest available image = the most recent of the newest-version and
+        # newest-tag push dates. Take the max (not the first non-null): a
+        # project can leave a stale semver-looking tag behind after moving to
+        # rolling/date tags (e.g. linuxserver git-sha tags), so the version
+        # tag's date may predate the running image.
+        candidate_dates = [
+            d for d in (row['ImageNewestVerDate'], row['ImageNewestTagDate'])
+            if d and d != UNKNOWN_DATE
+        ]
+        if run_date and run_date != UNKNOWN_DATE and candidate_dates:
+            gap = max(candidate_dates) - run_date
+            if gap.total_seconds() <= 0:
+                return 'current', 'up to date'
+            return age_severity(gap)
         return 'unknown', 'unknown'
 
     @staticmethod
