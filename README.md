@@ -140,3 +140,4 @@ file.
 * __wiki-to-deckjs.py__ - simple, awful script to change markdown-like (very restricted markup set) markup to deck.js-ready html
 * __wordpress_daily_post.php__ - Script to publish the oldest post with a given status, if no other post has been published in 24 hours. Intended to be run via cron on weekdays
 * __xb3_to_graphite.py__ - Pull stats from Comcast XB3 modem web UI and push to graphite.
+* __zm-find-motion-in-region/__ - Find ZoneMinder events with motion inside an arbitrary rectangular region of the frame that is *not* configured as a ZoneMinder zone, by re-analyzing the recorded JPEG frames. Reads frames straight off a local copy of ZM's events directory when you have one, or downloads them (in parallel, with an on-disk cache) otherwise. Includes a GUI region picker and a command that symlinks matching frames into one directory for review. See its README.

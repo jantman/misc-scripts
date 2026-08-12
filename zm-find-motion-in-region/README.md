@@ -132,7 +132,7 @@ You can also point at a different file with `--config path.json` or the
 ## Quick start
 
 ```bash
-# 1. Confirm your config + credentials work.
+# 1. Confirm your config works (credentials, if any, and the events dir).
 python zm_motion.py test-connection
 
 # 2. Find candidate events for the camera + time window.
@@ -147,7 +147,8 @@ python zm_motion.py save-frame --event 123456 -o ref.jpg
 python zm_motion.py pick-region --image ref.jpg
 #    No display? See "Finding your ROI coordinates" below.
 
-# 5. Scan the time window for motion inside that ROI.
+# 5. Scan the time window for motion inside that ROI, passing the --region
+#    string pick-region printed.
 python zm_motion.py scan --monitor 6 \
     --start "2026-04-29 00:00:00" --end "2026-05-06 10:00:00" \
     --region 800,450,300,200 \
