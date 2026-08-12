@@ -859,6 +859,203 @@ def cmd_annotate_region(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tk_photo_image(tk_module: Any, image: Image.Image, master: Any) -> Any:
+    """Build a Tk-displayable image, preferring PIL's ImageTk.
+
+    Falls back to handing Tk a base64 PNG, which Tk 8.6 decodes natively — some
+    distributions package PIL's Tk bindings separately from Pillow itself.
+
+    The master is passed explicitly: a PhotoImage otherwise attaches to Tk's
+    default root, which is the wrong interpreter if one was already created.
+    """
+    try:
+        from PIL import ImageTk
+
+        return ImageTk.PhotoImage(image, master=master)
+    except ImportError:
+        import base64
+        from io import BytesIO
+
+        buf = BytesIO()
+        image.save(buf, format="PNG")
+        return tk_module.PhotoImage(data=base64.b64encode(buf.getvalue()), master=master)
+
+
+def cmd_pick_region(args: argparse.Namespace) -> int:
+    """Drag a rectangle on a frame and get the --region string back.
+
+    annotate-region verifies coordinates you already have; this is how you get
+    them in the first place without reading pixel positions out of an image
+    editor. Uses Tkinter, which ships with Python, rather than pulling in OpenCV
+    (~70 MB) for one rectangle selector.
+    """
+    try:
+        import tkinter as tk
+    except ImportError:
+        sys.exit(
+            "pick-region needs Tkinter, which is missing from this Python build.\n"
+            "Install it (Debian/Ubuntu: apt install python3-tk; Fedora: python3-tkinter),\n"
+            "or read the coordinates off the image in an editor and check them with\n"
+            "annotate-region."
+        )
+
+    img = Image.open(args.image).convert("RGB")
+
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        sys.exit(
+            f"Cannot open a window ({exc}).\n"
+            "pick-region needs a display. Over SSH, use 'ssh -X', or copy the frame to "
+            "a desktop machine, or fall back to annotate-region with hand-read coordinates."
+        )
+
+    root.title(f"pick-region — {os.path.basename(args.image)} ({img.width}x{img.height})")
+
+    # Shrink to fit the screen; all reported coordinates are mapped back to full
+    # resolution, so the ROI is in source pixels no matter how it's displayed.
+    max_w = max(320, int(root.winfo_screenwidth() * 0.9))
+    max_h = max(240, int(root.winfo_screenheight() * 0.82))
+    scale = min(1.0, max_w / img.width, max_h / img.height)
+    disp_w = max(1, round(img.width * scale))
+    disp_h = max(1, round(img.height * scale))
+    disp_img = img if scale == 1.0 else img.resize((disp_w, disp_h), Image.LANCZOS)
+    photo = _tk_photo_image(tk, disp_img, root)
+
+    canvas = tk.Canvas(root, width=disp_w, height=disp_h, cursor="crosshair", highlightthickness=0)
+    canvas.pack()
+    canvas.create_image(0, 0, anchor="nw", image=photo)
+    canvas.image = photo  # keep a reference; Tk does not own it
+
+    zoom_note = "" if scale == 1.0 else f"  (shown at {scale * 100:.0f}%)"
+    status = tk.Label(
+        root,
+        text=f"Drag a rectangle.  ENTER = accept,  R = reset,  ESC = cancel{zoom_note}",
+        anchor="w",
+        font=("TkDefaultFont", 11),
+    )
+    status.pack(fill="x", padx=6, pady=4)
+
+    state: dict[str, Any] = {"anchor": None, "rect": None, "region": None, "result": None}
+    if args.region:
+        state["region"] = Region.parse(args.region)
+
+    def to_source(x: float, y: float) -> tuple[int, int]:
+        """Canvas point -> source-image pixel, clamped to the frame."""
+        sx = min(max(x / scale, 0), img.width)
+        sy = min(max(y / scale, 0), img.height)
+        return int(round(sx)), int(round(sy))
+
+    def draw(region: Region | None) -> None:
+        if state["rect"] is not None:
+            canvas.delete(state["rect"])
+            state["rect"] = None
+        if region is None:
+            return
+        state["rect"] = canvas.create_rectangle(
+            region.x * scale, region.y * scale,
+            (region.x + region.w) * scale, (region.y + region.h) * scale,
+            outline="#ff2d2d", width=2,
+        )
+
+    def show(region: Region | None, verb: str = "") -> None:
+        if region is None:
+            status.config(text=f"Drag a rectangle.  ENTER = accept,  R = reset,  ESC = cancel{zoom_note}")
+            return
+        status.config(
+            text=f"{verb}--region {region.x},{region.y},{region.w},{region.h}"
+                 f"   ({region.w}x{region.h} px, {region.area:,} px²)"
+        )
+
+    def on_press(event: Any) -> None:
+        state["anchor"] = to_source(event.x, event.y)
+
+    def on_drag(event: Any) -> None:
+        if state["anchor"] is None:
+            return
+        x0, y0 = state["anchor"]
+        x1, y1 = to_source(event.x, event.y)
+        # Normalize so dragging in any direction yields a positive-size box.
+        region = Region(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
+        if region.w < 1 or region.h < 1:
+            return
+        state["region"] = region
+        draw(region)
+        show(region)
+
+    def on_release(event: Any) -> None:
+        on_drag(event)
+        state["anchor"] = None
+
+    def accept(_event: Any = None) -> None:
+        if state["region"] is None:
+            status.config(text="Drag a rectangle first (or press ESC to cancel).")
+            return
+        state["result"] = state["region"]
+        root.destroy()
+
+    def reset(_event: Any = None) -> None:
+        state["region"] = None
+        draw(None)
+        show(None)
+
+    def cancel(_event: Any = None) -> None:
+        state["result"] = None
+        root.destroy()
+
+    canvas.bind("<ButtonPress-1>", on_press)
+    canvas.bind("<B1-Motion>", on_drag)
+    canvas.bind("<ButtonRelease-1>", on_release)
+    root.bind("<Return>", accept)
+    root.bind("<KP_Enter>", accept)
+    root.bind("<Escape>", cancel)
+    root.bind("r", reset)
+    root.bind("R", reset)
+    root.protocol("WM_DELETE_WINDOW", cancel)
+
+    buttons = tk.Frame(root)
+    buttons.pack(fill="x", padx=6, pady=(0, 6))
+    tk.Button(buttons, text="Accept (Enter)", command=accept).pack(side="left")
+    tk.Button(buttons, text="Reset (R)", command=reset).pack(side="left", padx=6)
+    tk.Button(buttons, text="Cancel (Esc)", command=cancel).pack(side="left")
+
+    if state["region"] is not None:
+        draw(state["region"])
+        show(state["region"], "starting from ")
+
+    print("Opening picker — drag a rectangle, then press ENTER (ESC cancels).", flush=True)
+    root.update()
+    root.lift()
+    root.attributes("-topmost", True)
+    root.after(200, lambda: root.attributes("-topmost", False))
+    # Take keyboard focus explicitly: some window managers don't focus a newly
+    # mapped window, and then ENTER/ESC would appear to do nothing.
+    canvas.focus_set()
+    try:
+        root.focus_force()
+    except tk.TclError:
+        pass
+    root.mainloop()
+
+    region = state["result"]
+    if region is None:
+        print("Cancelled; no region selected.")
+        return 1
+
+    spec = f"{region.x},{region.y},{region.w},{region.h}"
+    print(f"\nRegion: {region.w}x{region.h} px at ({region.x}, {region.y})")
+    print(f"\n  --region {spec}\n")
+
+    if args.output:
+        preview = img.copy()
+        drawer = ImageDraw.Draw(preview)
+        drawer.rectangle(region.box, outline=(255, 0, 0), width=3)
+        drawer.text((region.x + 4, max(0, region.y - 14)), spec, fill=(255, 0, 0))
+        preview.save(args.output)
+        print(f"Preview written to {args.output}")
+    return 0
+
+
 def cmd_scan(args: argparse.Namespace) -> int:
     client = make_client(args)
     region = Region.parse(args.region)
@@ -1224,6 +1421,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--frame", type=int, help="FrameId (default: middle frame of the event)")
     sp.add_argument("-o", "--output", default="frame.jpg", help="Output image path (default frame.jpg)")
     sp.set_defaults(func=cmd_save_frame)
+
+    # pick-region
+    sp = sub.add_parser(
+        "pick-region",
+        help="Drag a rectangle on a frame to get its --region coordinates (needs a display).",
+    )
+    sp.add_argument("--image", required=True, help="Image to pick on (e.g. one saved by save-frame)")
+    sp.add_argument(
+        "--region",
+        help="Start from an existing 'X,Y,W,H' box instead of a blank frame, to refine it",
+    )
+    sp.add_argument("-o", "--output", help="Also write an annotated preview to this path")
+    sp.set_defaults(func=cmd_pick_region)
 
     # annotate-region
     sp = sub.add_parser("annotate-region", help="Draw an ROI box on an image to verify coordinates.")

@@ -143,10 +143,9 @@ python zm_motion.py list-events --monitor 6 \
 # 3. Grab a reference frame so you can pick ROI coordinates.
 python zm_motion.py save-frame --event 123456 -o ref.jpg
 
-# 4. Figure out the ROI (X,Y,W,H in pixels — see below), then verify it
-#    visually by drawing it on the reference frame.
-python zm_motion.py annotate-region --image ref.jpg --region 800,450,300,200 -o roi.jpg
-#    Open roi.jpg and confirm the red box covers the area you care about.
+# 4. Pick the ROI by dragging a box on that frame; it prints the --region flag.
+python zm_motion.py pick-region --image ref.jpg
+#    No display? See "Finding your ROI coordinates" below.
 
 # 5. Scan the time window for motion inside that ROI.
 python zm_motion.py scan --monitor 6 \
@@ -166,12 +165,46 @@ python zm_motion.py --cache-dir /big/disk/zm-cache matches \
 The ROI is given as `X,Y,W,H` in **pixels**, where `X,Y` is the top-left corner
 (origin is the top-left of the frame) and `W,H` are width and height.
 
-The easy workflow:
+### The easy way: `pick-region`
+
+```bash
+python zm_motion.py save-frame --event 123456 -o ref.jpg
+python zm_motion.py pick-region --image ref.jpg
+```
+
+Opens the frame in a window. Drag a rectangle, press **ENTER**, and it prints
+the flag ready to paste:
+
+```
+Region: 500x400 px at (700, 300)
+
+  --region 700,300,500,400
+```
+
+- **ENTER** accepts, **R** resets, **ESC** cancels (exit status 1, nothing printed).
+- Frames bigger than your screen are shown scaled down; the coordinates printed
+  are always in **source** pixels, so a 4K frame picked on a laptop still gives
+  you real coordinates.
+- `--region X,Y,W,H` pre-loads an existing box so you can refine it instead of
+  starting over.
+- `-o preview.jpg` also writes the annotated frame.
+- Uses Tkinter, which ships with Python — no extra dependency. If your Python
+  was built without it, install `python3-tk` (Debian/Ubuntu) or
+  `python3-tkinter` (Fedora).
+
+### Without a display
+
+`pick-region` needs a GUI, so over a plain SSH session use `ssh -X`, or copy the
+frame to a desktop machine, or fall back to reading the coordinates by hand:
 
 1. `save-frame` a representative frame to a JPEG.
 2. Open it in any image editor (GIMP, Preview, even a browser with dev tools)
-   and read off the pixel coordinates of the rectangle you want.
-3. Use `annotate-region` to draw your guess back onto the frame and eyeball it.
+   and read off the pixel coordinates of the rectangle you want. GIMP shows the
+   pointer position in pixels in its bottom-left status bar.
+3. Use `annotate-region` to draw your guess back onto the frame and eyeball it:
+   ```bash
+   python zm_motion.py annotate-region --image ref.jpg --region 800,450,300,200 -o roi.jpg
+   ```
 4. Adjust and repeat until the red box sits where you want.
 
 Make sure the ROI fits within the frame; `annotate-region` warns you if it
@@ -421,6 +454,7 @@ opening events one at a time in the ZoneMinder UI.
 | `test-connection`  | Verify config + authentication; print ZM version.               |
 | `list-events`      | List events by monitor / time window / minimum duration.        |
 | `save-frame`       | Download a single frame (defaults to the event's middle frame). |
+| `pick-region`      | Drag a box on a frame to get its `--region` coordinates (GUI).  |
 | `annotate-region`  | Draw an ROI box on an image to verify coordinates.              |
 | `scan`             | The main command: scan events for motion inside the ROI.        |
 | `download`         | Pre-fetch event frames into the cache dir (parallel, resumable). |
