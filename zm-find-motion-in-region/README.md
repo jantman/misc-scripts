@@ -20,8 +20,10 @@ site-specific values are baked into the code.
 
 1. Authenticates to the ZoneMinder web API (token auth, ZM 1.34+).
 2. Lists events matching a monitor and time window.
-3. For each event, downloads its JPEG frames via the `zms` streaming CGI,
-   iterating the event's full frame range (see "ZoneMinder frame quirks" below).
+3. For each event, reads its JPEG frames — from a local copy of the events
+   directory if you have one (`--events-dir`), otherwise downloading them via
+   the `zms` streaming CGI — iterating the event's full frame range (see
+   "ZoneMinder frame quirks" below).
 4. Crops every frame to your ROI, converts to grayscale, and computes the
    absolute pixel difference between consecutive frames *inside the ROI only*.
 5. Flags events where the fraction of changed ROI pixels exceeds a threshold,
@@ -94,11 +96,27 @@ $EDITOR zm_config.json
 | Key          | Meaning                                                                                          |
 |--------------|--------------------------------------------------------------------------------------------------|
 | `base_url`   | Root URL of your ZM web install, **no trailing slash**. If ZM lives under `/zm`, include it (e.g. `https://host/zm`). If it's served at the web root, omit it. |
-| `username`   | A ZoneMinder user with API + view permissions.                                                   |
-| `password`   | That user's password.                                                                            |
+| `username`   | A ZoneMinder user with API + view permissions. **Omit** if your install has authentication disabled (`ZM_OPT_USE_AUTH` off) — see below. |
+| `password`   | That user's password. Omit alongside `username`.                                                 |
 | `verify_ssl` | Set to `false` only for self-signed certs you trust (insecure).                                  |
 | `timeout`    | Per-request timeout in seconds.                                                                  |
 | `cache_dir`  | Optional. Directory for the on-disk frame cache (see [Frame cache & resuming](#frame-cache--resuming)). Leave `""` to disable, or override per-run with `--cache-dir`. |
+| `events_dir` | Optional. Local copy of ZoneMinder's events tree (see [Reading frames from a local events tree](#reading-frames-from-a-local-events-tree)). Leave `""` to disable, or override per-run with `--events-dir`. |
+
+### Installs without authentication
+
+If ZoneMinder is running with `ZM_OPT_USE_AUTH` off, leave `username` and
+`password` out of the config entirely; the tool then talks to the API and `zms`
+without a token instead of failing on a login the server doesn't want:
+
+```json
+{
+  "base_url": "http://zoneminder.example.com",
+  "events_dir": "/mnt/zm-events"
+}
+```
+
+`test-connection` tells you which mode it's in.
 
 `zm_config.json` is git-ignored so you won't accidentally commit credentials.
 You can also point at a different file with `--config path.json` or the
@@ -289,6 +307,78 @@ before the diff — so re-tune `--min-fraction` if you switch scales mid-campaig
 
 ---
 
+## Reading frames from a local events tree
+
+If you have ZoneMinder's events directory available locally — an NFS/SMB mount,
+a snapshot, a restored backup, or because you're running this *on* the ZM box —
+point `--events-dir` at it and frames are read straight off disk. No HTTP, no
+`zms` processes, no frame cache needed:
+
+```bash
+python zm_motion.py --events-dir /mnt/zm-events scan --monitor 6 \
+    --start "2026-08-04 00:00:00" --end "2026-08-04 05:00:00" \
+    --region 700,300,500,400 --json-out results.json
+```
+
+This is *much* faster than fetching, and it's the same pixels: a local scan and
+an HTTP scan of the same event produce byte-identical diff metrics. Measured
+against a 1920×1080 monitor over NFS, a 100-frame event took ~2.5 s locally
+versus ~1 minute of frame fetches.
+
+Point `--events-dir` at the directory that holds the **per-monitor
+subdirectories** — the local equivalent of `/var/cache/zoneminder/events`:
+
+```
+/mnt/zm-events/
+    6/                                  <- monitor id
+        2026-08-04/                     <- event date
+            1647875/                    <- event id
+                00001-capture.jpg
+                00001-analyse.jpg
+                ...
+```
+
+Details:
+
+- **All three ZM storage schemes work** (`Deep`, `Medium`, `Shallow`). The tool
+  re-roots the server-side path ZoneMinder reports for each event
+  (`FileSystemPath`) onto your local directory, so it doesn't matter that the
+  server calls it `/var/cache/zoneminder/events` and you mounted it somewhere
+  else. Older ZM APIs that don't report that path fall back to rebuilding it
+  from the monitor, date, and event id.
+- **`-capture.jpg` is used** — the raw recorded frame. If a monitor was
+  configured to save only analysis JPEGs, the tool falls back to `-analyse.jpg`
+  and says so once: those images have ZoneMinder's motion boxes and zone
+  outlines drawn onto them, which is genuine pixel change inside an ROI.
+- **Anything missing locally still falls back to HTTP.** A partially mounted or
+  partially pruned archive just works; `scan` prints how many events it located
+  locally up front. `download` skips frames that are already on the mount.
+- **No frame cache is needed.** Frames read locally are not copied into
+  `--cache-dir` — they're already files on disk. `matches` links straight at the
+  events tree.
+- **Not combinable with `--scale`.** Frames on disk are always full resolution,
+  so mixing them with downscaled fetched frames would make ROI coordinates mean
+  two different things. The tool rejects the combination rather than guessing.
+- **Read-only is fine** — nothing is ever written to the events tree.
+
+`test-connection` verifies the mount as well as the API, resolving a real event
+and one of its frames so you find out immediately if the path is wrong:
+
+```
+$ python zm_motion.py --events-dir /mnt/zm-events test-connection
+OK — reaching http://zoneminder.example.com without authentication
+ZoneMinder version: 1.38.3, API: 2.0
+
+Local events tree: /mnt/zm-events
+  event 1677802 -> /mnt/zm-events/16/2026-08-12/1677802
+  frame 1 -> /mnt/zm-events/16/2026-08-12/1677802/00001-capture.jpg
+```
+
+The API is still used to *list* events and their metadata — only the frame
+images come from disk — so `base_url` is required either way.
+
+---
+
 ## Reviewing hits: the `matches` command
 
 `scan --json-out` gives you numbers. `matches` turns them back into pictures:
@@ -313,9 +403,11 @@ opening events one at a time in the ZoneMinder UI.
 
 - `--min-fraction` / `--top` re-filter the *existing* results file — no rescan
   needed, so you can tighten or loosen the cut in seconds.
-- A peak frame that isn't in the cache is downloaded into it (just one frame per
-  event, so this is cheap even after a cacheless scan). `--no-fetch` skips them
-  instead.
+- Links point at the local events tree when `--events-dir` is set, otherwise at
+  the cache. With `--events-dir` no cache or downloads are involved at all.
+- A peak frame that's in neither place is downloaded into the cache (just one
+  frame per event, so this is cheap even after a cacheless scan). `--no-fetch`
+  skips them instead.
 - `--clear` removes existing symlinks from the output directory first. It only
   ever unlinks symlinks — a real file in there is never touched.
 - Requires a cache directory, since that's what the links point into.
@@ -335,8 +427,8 @@ opening events one at a time in the ZoneMinder UI.
 | `matches`          | Symlink flagged events' peak frames into one directory to browse. |
 
 Run any command with `-h` for its full options, e.g. `python zm_motion.py scan -h`.
-The `--config`, `--cache-dir`, and `--scale` flags are global and go *before* the
-subcommand.
+The `--config`, `--cache-dir`, `--events-dir`, and `--scale` flags are global and
+go *before* the subcommand.
 
 ---
 
@@ -361,11 +453,15 @@ subcommand.
   disabled. This tool only supports token auth.
 - **Login returns non-JSON / 404 on `/api/...`:** your `base_url` prefix is
   wrong — try adding or removing a `/zm` segment.
-- **Slow scans:** large time windows × many frames = many HTTP fetches. Narrow
-  the window, raise `--sample-every`, pre-filter with `list-events`, and use a
-  `--cache-dir` (plus the `download` command) so frames are fetched once and
-  reused — see [Frame cache & resuming](#frame-cache--resuming). For the big
-  jobs, `download --workers 8 --scale 50` is the largest lever available.
+- **Slow scans:** large time windows × many frames = many HTTP fetches. If you
+  can mount the events directory, `--events-dir` removes the fetching entirely
+  and is by far the biggest win — see
+  [Reading frames from a local events tree](#reading-frames-from-a-local-events-tree).
+  Otherwise: narrow the window, raise `--sample-every`, pre-filter with
+  `list-events`, and use a `--cache-dir` (plus the `download` command) so frames
+  are fetched once and reused — see
+  [Frame cache & resuming](#frame-cache--resuming). For big fetching jobs,
+  `download --workers 8 --scale 50` is the largest lever available.
 
 ---
 

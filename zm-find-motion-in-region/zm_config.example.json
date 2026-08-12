@@ -1,8 +1,9 @@
 {
   "base_url": "https://zoneminder.example.com",
-  "username": "REPLACE_WITH_ZM_USERNAME",
-  "password": "REPLACE_WITH_ZM_PASSWORD",
+  "username": "REPLACE_WITH_ZM_USERNAME_OR_REMOVE_IF_AUTH_DISABLED",
+  "password": "REPLACE_WITH_ZM_PASSWORD_OR_REMOVE_IF_AUTH_DISABLED",
   "verify_ssl": true,
   "timeout": 30,
-  "cache_dir": ""
+  "cache_dir": "",
+  "events_dir": ""
 }

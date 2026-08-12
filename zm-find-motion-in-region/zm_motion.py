@@ -8,9 +8,10 @@ rectangular Region Of Interest (ROI) that is NOT set up as a zone — useful for
 after-the-fact investigations ("did anything move in *that* corner of the frame
 between these two dates?").
 
-It works by pulling the JPEG frames of each event from the ZM web API, cropping
-each frame to your ROI, and computing a frame-to-frame pixel difference inside the
-crop. Events whose ROI difference exceeds a threshold are reported.
+It works by reading the JPEG frames of each event — from a local copy of ZM's
+events directory if you have one (--events-dir), otherwise from the web API —
+cropping each frame to your ROI, and computing a frame-to-frame pixel difference
+inside the crop. Events whose ROI difference exceeds a threshold are reported.
 
 No URLs, credentials, or other site-specific values are baked in — everything
 comes from a JSON config file (see zm_config.example.json) or CLI flags.
@@ -53,11 +54,17 @@ DEFAULT_CONFIG_PATH = os.environ.get("ZM_CONFIG", "zm_config.json")
 @dataclass
 class Config:
     base_url: str
-    username: str
-    password: str
+    username: str = ""
+    password: str = ""
     verify_ssl: bool = True
     timeout: int = 30
     cache_dir: str | None = None
+    events_dir: str | None = None
+
+    @property
+    def authenticated(self) -> bool:
+        """False for installs with ZM_OPT_USE_AUTH off (no login required)."""
+        return bool(self.username)
 
     @classmethod
     def load(cls, path: str) -> "Config":
@@ -69,16 +76,21 @@ class Config:
             )
         with open(path) as fh:
             data = json.load(fh)
-        missing = [k for k in ("base_url", "username", "password") if not data.get(k)]
-        if missing:
-            sys.exit(f"Config {path} is missing required keys: {', '.join(missing)}")
+        if not data.get("base_url"):
+            sys.exit(f"Config {path} is missing required key: base_url")
+        if data.get("password") and not data.get("username"):
+            sys.exit(f"Config {path} sets a password but no username.")
         return cls(
             base_url=data["base_url"].rstrip("/"),
-            username=data["username"],
-            password=data["password"],
+            # Username/password are optional: a ZoneMinder with authentication
+            # disabled serves the API and zms without a token, and sending a
+            # login it doesn't want just produces a confusing error.
+            username=data.get("username") or "",
+            password=data.get("password") or "",
             verify_ssl=data.get("verify_ssl", True),
             timeout=int(data.get("timeout", 30)),
             cache_dir=data.get("cache_dir") or None,
+            events_dir=data.get("events_dir") or None,
         )
 
 
@@ -95,7 +107,13 @@ class ZMClient:
     install lives under '/zm', just include that in base_url in the config.
     """
 
-    def __init__(self, cfg: Config, cache_dir: str | None = None, scale: int = 100):
+    def __init__(
+        self,
+        cfg: Config,
+        cache_dir: str | None = None,
+        scale: int = 100,
+        events_dir: str | None = None,
+    ):
         self.cfg = cfg
         self.session = requests.Session()
         self.session.verify = cfg.verify_ssl
@@ -108,6 +126,12 @@ class ZMClient:
         self.cache_dir = cache_dir or cfg.cache_dir
         # Percent scale applied by zms when rendering frames (100 = source size).
         self.scale = scale
+        # Local copy of ZoneMinder's events tree (e.g. an NFS mount of it). When
+        # set, frames are read straight off disk instead of being fetched.
+        self.events_dir = events_dir or cfg.events_dir
+        self._event_dirs: dict[int, str | None] = {}
+        self._event_dirs_lock = threading.Lock()
+        self._warned_analyse = False
 
     def _session(self) -> requests.Session:
         """Return a Session owned by the calling thread.
@@ -128,12 +152,19 @@ class ZMClient:
 
     # -- auth ------------------------------------------------------------- #
 
-    def login(self) -> str:
+    def login(self) -> str | None:
         """Authenticate and return an access token (cached until near expiry).
+
+        Returns None when no username is configured — a ZoneMinder with
+        authentication disabled serves both the API and zms without a token,
+        and POSTing a login to one only produces a confusing failure.
 
         The token is shared by every thread, so refreshes are serialized: without
         the lock, N workers hitting expiry at once would each POST a login.
         """
+        if not self.cfg.authenticated:
+            return None
+
         now = time.time()
         if self._access_token and now < self._token_expires_at - 60:
             return self._access_token
@@ -178,8 +209,9 @@ class ZMClient:
 
     def _api_get(self, path: str) -> dict[str, Any]:
         token = self.login()
-        sep = "&" if "?" in path else "?"
-        url = f"{self.cfg.base_url}{path}{sep}token={token}"
+        url = f"{self.cfg.base_url}{path}"
+        if token:
+            url += ("&" if "?" in path else "?") + f"token={token}"
         resp = self._session().get(url, timeout=self.cfg.timeout)
         if resp.status_code != 200:
             sys.exit(f"API GET failed ({resp.status_code}): {url}\n{resp.text[:500]}")
@@ -241,6 +273,129 @@ class ZMClient:
         payload = self._api_get(f"/api/events/{event_id}.json")
         return payload.get("event", payload)
 
+    # -- local events tree ------------------------------------------------ #
+
+    # How many trailing path components of an event's directory belong to the
+    # event, per ZoneMinder's storage scheme. Used to re-root the server-side
+    # path the API reports onto a local copy of the events tree:
+    #   Deep     <mon>/<yy>/<mm>/<dd>/<hh>/<mm>/<ss>
+    #   Medium   <mon>/<YYYY-MM-DD>/<eventid>
+    #   Shallow  <mon>/<eventid>
+    SCHEME_DEPTH = {"deep": 7, "medium": 3, "shallow": 2}
+
+    def note_event(self, event: dict[str, Any]) -> None:
+        """Record where an event lives on disk, from a record we already have.
+
+        Event records from both /api/events/index and /api/events/<id> carry
+        FileSystemPath and Scheme, so passing them here means resolving a local
+        event directory costs no extra API calls.
+        """
+        if not self.events_dir:
+            return
+        try:
+            eid = int(event["Id"])
+        except (KeyError, TypeError, ValueError):
+            return
+        with self._event_dirs_lock:
+            if eid in self._event_dirs:
+                return
+        resolved = self._resolve_event_dir(event)
+        with self._event_dirs_lock:
+            self._event_dirs.setdefault(eid, resolved)
+
+    def _resolve_event_dir(self, event: dict[str, Any]) -> str | None:
+        """Map one event record to its directory under self.events_dir."""
+        root = self.events_dir
+        if not root:
+            return None
+
+        candidates: list[str] = []
+        scheme = str(event.get("Scheme") or "").strip().lower()
+
+        # Preferred: re-root the absolute server-side path the API reports. This
+        # needs no timezone handling and no guessing about the events root.
+        fsp = event.get("FileSystemPath")
+        if fsp:
+            parts = [p for p in str(fsp).replace("\\", "/").split("/") if p]
+            depths = [self.SCHEME_DEPTH.get(scheme)] if scheme in self.SCHEME_DEPTH else []
+            # Try the other depths too, in case Scheme is absent or disagrees.
+            depths += [3, 2, 7]
+            for depth in depths:
+                if depth and len(parts) >= depth:
+                    candidates.append(os.path.join(root, *parts[-depth:]))
+
+        # Fallback: rebuild the path from the individual fields (older ZM APIs
+        # don't report FileSystemPath).
+        mon = str(event.get("MonitorId") or "").strip()
+        eid = str(event.get("Id") or "").strip()
+        start = str(event.get("StartTime") or event.get("StartDateTime") or "").strip()
+        date, _, clock = start.partition(" ")
+        if mon and eid and date:
+            candidates.append(os.path.join(root, mon, date, eid))          # Medium
+        if mon and date and clock:
+            hms = clock.split(":")
+            if len(date) >= 10 and len(hms) >= 3:
+                candidates.append(                                          # Deep
+                    os.path.join(root, mon, date[2:4], date[5:7], date[8:10], *hms[:3])
+                )
+        if mon and eid:
+            candidates.append(os.path.join(root, mon, eid))                 # Shallow
+
+        seen: set[str] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            if os.path.isdir(path):
+                return path
+        return None
+
+    def local_event_dir(self, event_id: int) -> str | None:
+        """Directory for this event under the local events tree, or None.
+
+        Falls back to one API lookup for events that were never passed through
+        note_event() (e.g. `matches`, which starts from a results file).
+        """
+        if not self.events_dir:
+            return None
+        with self._event_dirs_lock:
+            if event_id in self._event_dirs:
+                return self._event_dirs[event_id]
+        try:
+            record = self.get_event(event_id).get("Event") or {}
+        except (requests.RequestException, ValueError, SystemExit):
+            record = {}
+        resolved = self._resolve_event_dir(record) if record else None
+        with self._event_dirs_lock:
+            self._event_dirs.setdefault(event_id, resolved)
+        return resolved
+
+    def local_frame_path(self, event_id: int, frame_id: int) -> str | None:
+        """Path to this frame in the local events tree, or None if not there."""
+        directory = self.local_event_dir(event_id)
+        if not directory:
+            return None
+
+        capture = os.path.join(directory, f"{frame_id:05d}-capture.jpg")
+        if os.path.exists(capture):
+            return capture
+
+        # Monitors configured to save only analysis JPEGs have no -capture file.
+        # Those images have ZM's motion boxes and zone outlines drawn onto them,
+        # which is real pixel change inside an ROI — usable, but say so once.
+        analyse = os.path.join(directory, f"{frame_id:05d}-analyse.jpg")
+        if os.path.exists(analyse):
+            if not self._warned_analyse:
+                self._warned_analyse = True
+                print(
+                    f"  NOTE: event {event_id} has no -capture.jpg frames; falling back "
+                    "to -analyse.jpg, which has ZoneMinder's motion/zone overlays drawn "
+                    "on it and may register as ROI change.",
+                    flush=True,
+                )
+            return analyse
+        return None
+
     # -- frames (images) -------------------------------------------------- #
 
     def frame_cache_path(self, event_id: int, frame_id: int) -> str | None:
@@ -257,16 +412,48 @@ class ZMClient:
         name = f"{frame_id}.jpg" if self.scale == 100 else f"{frame_id}@{self.scale}.jpg"
         return os.path.join(self.cache_dir, str(event_id), name)
 
-    def fetch_frame(self, event_id: int, frame_id: int) -> Image.Image:
-        """Return a single JPEG frame, reading the on-disk cache first.
+    def frame_disk_path(self, event_id: int, frame_id: int, fetch: bool = True) -> str | None:
+        """Return a readable on-disk path for this frame, or None.
 
-        Frames are fetched via /cgi-bin/zms (the portable way to pull one frame
-        out of a stored event; the web /index.php?view=image path 404s on some
+        Prefers the local events tree, then the cache, then (if fetch) downloads
+        into the cache. Used by `matches`, which needs a real file to link at.
+        """
+        local = self.local_frame_path(event_id, frame_id)
+        if local:
+            return local
+        cache_path = self.frame_cache_path(event_id, frame_id)
+        if cache_path and os.path.exists(cache_path):
+            return cache_path
+        if fetch and cache_path:
+            self.fetch_frame(event_id, frame_id)
+            if os.path.exists(cache_path):
+                return cache_path
+        return None
+
+    def fetch_frame(self, event_id: int, frame_id: int) -> Image.Image:
+        """Return a single JPEG frame.
+
+        Sources, in order: the local events tree (if --events-dir is set), the
+        on-disk cache, then /cgi-bin/zms (the portable way to pull one frame out
+        of a stored event; the web /index.php?view=image path 404s on some
         installs). When a cache_dir is configured, a previously downloaded frame
         is loaded from disk instead of re-fetched, and freshly downloaded frames
         are written to disk — so an interrupted scan/download resumes without
         re-downloading what it already has.
+
+        A frame read from the local tree is not copied into the cache: it is
+        already a file on disk, and duplicating it would waste the space the
+        cache exists to manage.
         """
+        local_path = self.local_frame_path(event_id, frame_id)
+        if local_path:
+            try:
+                return Image.open(local_path).convert("RGB")
+            except Exception as exc:
+                # A truncated/unreadable file on the mount shouldn't silently
+                # fall through to a download that hides the local problem.
+                raise RuntimeError(f"Cannot read {local_path}: {exc}") from exc
+
         cache_path = self.frame_cache_path(event_id, frame_id)
         if cache_path and os.path.exists(cache_path):
             try:
@@ -278,8 +465,10 @@ class ZMClient:
         token = self.login()
         url = (
             f"{self.cfg.base_url}/cgi-bin/zms"
-            f"?mode=single&source=event&event={event_id}&frame={frame_id}&token={token}"
+            f"?mode=single&source=event&event={event_id}&frame={frame_id}"
         )
+        if token:
+            url += f"&token={token}"
         if self.scale != 100:
             url += f"&scale={self.scale}"
         resp = self._session().get(url, timeout=self.cfg.timeout)
@@ -450,9 +639,20 @@ def analyze_event(
     verbose: bool = False,
 ) -> EventResult:
     eid = int(event["Id"])
-    detail = client.get_event(eid)
-    frame_records = detail.get("Frame") or []
-    total_frames = int(event.get("Frames") or detail.get("Event", {}).get("Frames") or 0)
+    client.note_event(event)
+
+    # Only pay for the per-event detail call when it is actually needed: an
+    # 'all' scan with a known frame count uses the 1..N range, so the (sparse)
+    # Frame[] records add nothing. Skipping it matters most against a local
+    # events tree, where it would otherwise be the only HTTP call per event.
+    frame_records: list[dict[str, Any]] = []
+    total_frames = int(event.get("Frames") or 0)
+    if frame_type == "alarm" or total_frames <= 0:
+        detail = client.get_event(eid)
+        frame_records = detail.get("Frame") or []
+        if total_frames <= 0:
+            total_frames = int(detail.get("Event", {}).get("Frames") or 0)
+
     chosen = select_frame_ids(total_frames, frame_records, frame_type, sample_every)
 
     res = EventResult(
@@ -536,22 +736,74 @@ def analyze_event(
 
 
 def make_client(args: argparse.Namespace) -> ZMClient:
-    """Build a ZMClient, letting a --cache-dir flag override the config value."""
+    """Build a ZMClient, letting CLI flags override the config values."""
     cfg = Config.load(args.config)
     scale = int(getattr(args, "scale", 100) or 100)
     if not 1 <= scale <= 400:
         sys.exit("--scale must be between 1 and 400 (percent); anything over 100 upscales.")
-    return ZMClient(cfg, cache_dir=getattr(args, "cache_dir", None), scale=scale)
+
+    events_dir = getattr(args, "events_dir", None) or cfg.events_dir
+    if events_dir:
+        if not os.path.isdir(events_dir):
+            sys.exit(f"--events-dir is not a directory: {events_dir}")
+        if scale != 100:
+            # Frames on disk are stored at source resolution, so a scaled run
+            # would mix full-size local frames with downscaled fetched ones and
+            # silently invalidate the ROI coordinates for one of them.
+            sys.exit(
+                "--scale cannot be combined with --events-dir: frames on disk are "
+                "always full resolution, so ROI coordinates would mean different "
+                "things for local and fetched frames."
+            )
+    return ZMClient(
+        cfg,
+        cache_dir=getattr(args, "cache_dir", None),
+        scale=scale,
+        events_dir=events_dir,
+    )
 
 
 def cmd_test_connection(args: argparse.Namespace) -> int:
     client = make_client(args)
     token = client.login()
-    print(f"OK — authenticated to {client.cfg.base_url}")
-    print(f"Access token (truncated): {token[:24]}...")
+    if token:
+        print(f"OK — authenticated to {client.cfg.base_url}")
+        print(f"Access token (truncated): {token[:24]}...")
+    else:
+        print(f"OK — reaching {client.cfg.base_url} without authentication")
+        print("(no username configured; assuming ZM_OPT_USE_AUTH is off)")
     # Sanity check an API read.
     version = client._api_get("/api/host/getVersion.json")
     print(f"ZoneMinder version: {version.get('version', '?')}, API: {version.get('apiversion', '?')}")
+
+    if client.events_dir:
+        print(f"\nLocal events tree: {client.events_dir}")
+        # Prove the mount actually resolves, rather than just existing: locate a
+        # real event and confirm its frames are readable. Ask for one page of
+        # newest-first events — list_events() would page through the entire
+        # table (tens of thousands of rows) for an unfiltered query.
+        payload = client._api_get(
+            "/api/events/index.json?page=1&sort=StartTime&direction=desc"
+        )
+        events = [e["Event"] for e in payload.get("events", [])][:1]
+        if not events:
+            print("  (no events returned by the API, so nothing to verify against)")
+            return 0
+        ev = events[0]
+        eid = int(ev["Id"])
+        client.note_event(ev)
+        directory = client.local_event_dir(eid)
+        if not directory:
+            print(
+                f"  WARNING: could not locate event {eid} under it.\n"
+                f"  ZoneMinder reports it at {ev.get('FileSystemPath')!r} "
+                f"(Scheme={ev.get('Scheme')!r}); --events-dir should point at the "
+                "directory holding the per-monitor subdirectories."
+            )
+            return 1
+        print(f"  event {eid} -> {directory}")
+        frame = client.local_frame_path(eid, 1)
+        print(f"  frame 1 -> {frame if frame else 'NOT FOUND (event may be video-only)'}")
     return 0
 
 
@@ -621,12 +873,22 @@ def cmd_scan(args: argparse.Namespace) -> int:
         return 0
 
     cache_note = f", cache={client.cache_dir}" if client.cache_dir else ""
+    local_note = f", events_dir={client.events_dir}" if client.events_dir else ""
     print(
         f"Scanning {len(events)} event(s) for motion in ROI "
         f"{region.x},{region.y} {region.w}x{region.h} "
         f"(pixel_threshold={args.pixel_threshold}, frames={args.frame_type}, "
-        f"sample_every={args.sample_every}{cache_note})\n"
+        f"sample_every={args.sample_every}{cache_note}{local_note})\n"
     )
+    if client.events_dir:
+        for ev in events:
+            client.note_event(ev)
+        found = sum(1 for ev in events if client.local_event_dir(int(ev["Id"])))
+        print(
+            f"  {found}/{len(events)} event(s) located in {client.events_dir}"
+            + ("" if found == len(events) else "; the rest will be fetched over HTTP")
+            + "\n"
+        )
 
     results: list[EventResult] = []
     for i, ev in enumerate(events, 1):
@@ -695,6 +957,14 @@ def cmd_download(args: argparse.Namespace) -> int:
         print("No events matched.")
         return 0
 
+    if client.events_dir:
+        for ev in events:
+            client.note_event(ev)
+        print(
+            f"Reading from {client.events_dir}; only frames missing from the local "
+            "events tree will be downloaded.\n"
+        )
+
     workers = max(1, args.workers)
 
     # Plan the work so we can show meaningful progress.
@@ -738,6 +1008,8 @@ def cmd_download(args: argparse.Namespace) -> int:
 
     def download_one(task: tuple[int, int]) -> str:
         eid, fid = task
+        if client.local_frame_path(eid, fid):
+            return "local"          # already on disk in the events tree
         path = client.frame_cache_path(eid, fid)
         if path and os.path.exists(path):
             return "cached"
@@ -751,10 +1023,10 @@ def cmd_download(args: argparse.Namespace) -> int:
             # failure shouldn't tear down the whole run.
             return "error"
 
-    downloaded = cached = errors = 0
+    downloaded = cached = errors = local = 0
     done = 0
     ev_index = 0
-    ev_dl = ev_cached = ev_err = 0
+    ev_dl = ev_cached = ev_err = ev_local = 0
     ev_seen = 0
 
     # ThreadPoolExecutor.map yields results in submission order, so tasks stay
@@ -770,30 +1042,36 @@ def cmd_download(args: argparse.Namespace) -> int:
             elif status == "cached":
                 cached += 1
                 ev_cached += 1
+            elif status == "local":
+                local += 1
+                ev_local += 1
             else:
                 errors += 1
                 ev_err += 1
 
             if ev_seen == len(plan[ev_index][1]):
+                local_part = f", local {ev_local}" if local else ""
                 print(
                     f"[{ev_index + 1}/{len(plan)}] event {eid}: "
-                    f"downloaded {ev_dl}, already-cached {ev_cached}, errors {ev_err} "
-                    f"({ev_seen} frames)",
+                    f"downloaded {ev_dl}, already-cached {ev_cached}{local_part}, "
+                    f"errors {ev_err} ({ev_seen} frames)",
                     flush=True,
                 )
                 ev_index += 1
-                ev_dl = ev_cached = ev_err = ev_seen = 0
+                ev_dl = ev_cached = ev_err = ev_local = ev_seen = 0
 
             if done % 200 == 0:
+                local_part = f", local={local}" if local else ""
                 print(
                     f"  ... {done}/{total_planned} frames "
-                    f"(downloaded={downloaded}, cached={cached}, errors={errors})",
+                    f"(downloaded={downloaded}, cached={cached}{local_part}, errors={errors})",
                     flush=True,
                 )
 
+    local_part = f", already-local={local}" if local else ""
     print(
-        f"\nDone. downloaded={downloaded}, already-cached={cached}, errors={errors} "
-        f"of {total_planned} planned frames.\nCache: {client.cache_dir}"
+        f"\nDone. downloaded={downloaded}, already-cached={cached}{local_part}, "
+        f"errors={errors} of {total_planned} planned frames.\nCache: {client.cache_dir}"
     )
     return 0
 
@@ -807,11 +1085,12 @@ def cmd_matches(args: argparse.Namespace) -> int:
     candidates first — far faster than opening events one at a time in the ZM UI.
     """
     client = make_client(args)
-    if not client.cache_dir:
+    if not client.cache_dir and not client.events_dir:
         sys.exit(
-            "matches needs a cache directory to link into: pass --cache-dir or set "
-            "cache_dir in the config. Peak frames missing from the cache are fetched "
-            "into it (one frame per event) unless --no-fetch is given."
+            "matches needs frames on disk to link at: pass --events-dir (a local copy "
+            "of ZoneMinder's events tree) or --cache-dir, or set events_dir/cache_dir "
+            "in the config. With only a cache dir, peak frames missing from it are "
+            "fetched into it (one frame per event) unless --no-fetch is given."
         )
 
     if not os.path.exists(args.results):
@@ -856,13 +1135,18 @@ def cmd_matches(args: argparse.Namespace) -> int:
         fid = int(r["peak_frame_id"])
         pct = float(r["max_changed_fraction"]) * 100.0
 
-        path = client.frame_cache_path(eid, fid)
-        if not os.path.exists(path):
-            if args.no_fetch:
+        # Prefer a frame already on disk (local events tree, then cache); only
+        # download when neither has it and we're allowed to.
+        path = client.frame_disk_path(eid, fid, fetch=False)
+        if path is None:
+            if args.no_fetch or not client.cache_dir:
                 missing += 1
                 continue
             try:
-                client.fetch_frame(eid, fid)  # writes into the cache
+                path = client.frame_disk_path(eid, fid, fetch=True)
+                if path is None:
+                    missing += 1
+                    continue
                 fetched += 1
             except (RuntimeError, requests.RequestException) as exc:
                 print(f"  event {eid} frame {fid}: {exc}")
@@ -903,6 +1187,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for the on-disk frame cache (overrides 'cache_dir' in the "
              "config). Frames are stored as <cache-dir>/<event_id>/<frame_id>.jpg and "
              "reused on later runs, so scans/downloads resume without re-downloading.",
+    )
+    p.add_argument(
+        "--events-dir", default=None, metavar="PATH",
+        help="Local copy of ZoneMinder's events tree (e.g. an NFS mount of "
+             "/var/cache/zoneminder/events), overriding 'events_dir' in the config. "
+             "When set, frames are read straight off disk instead of being fetched "
+             "over HTTP — far faster, and it needs no frame cache. Point it at the "
+             "directory containing the per-monitor subdirectories. Events not found "
+             "locally still fall back to downloading.",
     )
     p.add_argument(
         "--scale", type=int, default=100, metavar="PCT",
