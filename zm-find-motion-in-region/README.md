@@ -135,6 +135,10 @@ python zm_motion.py scan --monitor 6 \
     --start "2026-04-29 00:00:00" --end "2026-05-06 10:00:00" \
     --region 800,450,300,200 \
     --json-out results.json
+
+# 6. Turn the numbers back into pictures you can flip through.
+python zm_motion.py --cache-dir /big/disk/zm-cache matches \
+    --results results.json --min-fraction 0.02 --top 200
 ```
 
 ---
@@ -205,9 +209,10 @@ Point it at a cache directory — either `--cache-dir PATH` (global flag, goes
 *before* the subcommand) or `"cache_dir"` in the config:
 
 ```bash
-# Pre-download every frame in the window into the cache (resumable):
+# Pre-download every frame in the window into the cache (resumable, 8 at a time):
 python zm_motion.py --cache-dir /big/disk/zm-cache download \
-    --monitor 1 --start "2026-06-07 14:00:00" --end "2026-06-07 22:00:00"
+    --monitor 1 --start "2026-06-07 14:00:00" --end "2026-06-07 22:00:00" \
+    --workers 8
 
 # Then scan — frames are read from disk, so this is fast and re-runnable:
 python zm_motion.py --cache-dir /big/disk/zm-cache scan \
@@ -236,6 +241,85 @@ How it works:
 Without a cache dir the tool behaves as before: frames are fetched into memory,
 used once, and discarded (nothing persists between runs).
 
+### Downloading in parallel
+
+`download` fetches `--workers` frames at a time (default `4`). Frame fetches are
+almost entirely latency — request, wait for `zms` to decode one JPEG, receive —
+so parallelism is close to a linear speedup on the wall clock.
+
+Each concurrent request spawns a **`zms` process on the ZoneMinder server**, so
+this trades server load for your time. `8` is reasonable on a healthy box; back
+off if the ZM UI gets sluggish or you start seeing errors. `--workers 1` restores
+fully serial downloading.
+
+Progress is still reported per event, in order, however many workers are running
+— results are consumed in submission order, so a fast later event never jumps the
+line in the log. A frame that fails (HTTP 500, connection reset, non-JPEG body)
+is counted as an error and skipped, never cached, so a later run retries it.
+
+`scan` itself is deliberately single-threaded: it diffs *consecutive* frames, so
+it has to see them in order. The intended pattern for a big job is a parallel
+`download` to fill the cache, then a `scan` that reads from disk.
+
+### Fetching at reduced scale
+
+The global `--scale PCT` flag (default `100`) asks `zms` to render frames at a
+percentage of source resolution. `--scale 50` is roughly a 4× reduction in bytes
+and decode time, which matters a lot across hundreds of thousands of frames.
+
+```bash
+python zm_motion.py --cache-dir /big/disk/zm-cache --scale 50 download \
+    --monitor 1 --start "2026-06-07 14:00:00" --end "2026-06-07 22:00:00" --workers 8
+```
+
+Two things to keep straight:
+
+- **ROI coordinates are in scaled pixels.** At `--scale 50` every coordinate
+  halves, so a full-size ROI of `1488,604,136,223` becomes `744,302,68,111`. The
+  simplest way to avoid arithmetic errors is to pass the same `--scale` to
+  `save-frame`, pick the ROI off *that* image, and use the same `--scale` for
+  `scan`.
+- **Scaled frames are cached separately.** They're stored as
+  `<frame_id>@<scale>.jpg`, so a 50%-scale download can never be silently served
+  to a full-scale scan. Full-size frames keep the plain `<frame_id>.jpg` name, so
+  caches created before this flag existed stay valid.
+
+Downscaling also lowers sensitivity slightly — fine detail is averaged away
+before the diff — so re-tune `--min-fraction` if you switch scales mid-campaign.
+
+---
+
+## Reviewing hits: the `matches` command
+
+`scan --json-out` gives you numbers. `matches` turns them back into pictures:
+it symlinks the single peak frame of every flagged event into one directory,
+named so that **a filename sort is a score sort**.
+
+```bash
+python zm_motion.py --cache-dir /big/disk/zm-cache matches \
+    --results results.json --min-fraction 0.05 --top 200 --clear
+```
+
+```
+matches/
+    040.12pct_eid00001234_f000002.jpg -> /big/disk/zm-cache/1234/2.jpg
+    015.00pct_eid00001240_f000007.jpg -> /big/disk/zm-cache/1240/7.jpg
+    007.31pct_eid00001301_f000003.jpg -> /big/disk/zm-cache/1301/3.jpg
+```
+
+Open the directory in any image browser (geeqie, gthumb, nautilus, even GIMP)
+and page through candidates strongest-first. This is usually much faster than
+opening events one at a time in the ZoneMinder UI.
+
+- `--min-fraction` / `--top` re-filter the *existing* results file — no rescan
+  needed, so you can tighten or loosen the cut in seconds.
+- A peak frame that isn't in the cache is downloaded into it (just one frame per
+  event, so this is cheap even after a cacheless scan). `--no-fetch` skips them
+  instead.
+- `--clear` removes existing symlinks from the output directory first. It only
+  ever unlinks symlinks — a real file in there is never touched.
+- Requires a cache directory, since that's what the links point into.
+
 ---
 
 ## Commands reference
@@ -247,10 +331,12 @@ used once, and discarded (nothing persists between runs).
 | `save-frame`       | Download a single frame (defaults to the event's middle frame). |
 | `annotate-region`  | Draw an ROI box on an image to verify coordinates.              |
 | `scan`             | The main command: scan events for motion inside the ROI.        |
-| `download`         | Pre-fetch event frames into the cache dir (resumable).          |
+| `download`         | Pre-fetch event frames into the cache dir (parallel, resumable). |
+| `matches`          | Symlink flagged events' peak frames into one directory to browse. |
 
 Run any command with `-h` for its full options, e.g. `python zm_motion.py scan -h`.
-The `--config` and `--cache-dir` flags are global and go *before* the subcommand.
+The `--config`, `--cache-dir`, and `--scale` flags are global and go *before* the
+subcommand.
 
 ---
 
@@ -278,7 +364,8 @@ The `--config` and `--cache-dir` flags are global and go *before* the subcommand
 - **Slow scans:** large time windows × many frames = many HTTP fetches. Narrow
   the window, raise `--sample-every`, pre-filter with `list-events`, and use a
   `--cache-dir` (plus the `download` command) so frames are fetched once and
-  reused — see [Frame cache & resuming](#frame-cache--resuming).
+  reused — see [Frame cache & resuming](#frame-cache--resuming). For the big
+  jobs, `download --workers 8 --scale 50` is the largest lever available.
 
 ---
 

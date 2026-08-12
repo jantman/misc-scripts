@@ -24,7 +24,9 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Iterable
 from urllib.parse import quote
@@ -93,53 +95,84 @@ class ZMClient:
     install lives under '/zm', just include that in base_url in the config.
     """
 
-    def __init__(self, cfg: Config, cache_dir: str | None = None):
+    def __init__(self, cfg: Config, cache_dir: str | None = None, scale: int = 100):
         self.cfg = cfg
         self.session = requests.Session()
         self.session.verify = cfg.verify_ssl
+        self._local = threading.local()
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
+        self._token_lock = threading.Lock()
         # Directory for the on-disk frame cache (None disables caching). Frames
         # are stored as <cache_dir>/<event_id>/<frame_id>.jpg.
         self.cache_dir = cache_dir or cfg.cache_dir
+        # Percent scale applied by zms when rendering frames (100 = source size).
+        self.scale = scale
+
+    def _session(self) -> requests.Session:
+        """Return a Session owned by the calling thread.
+
+        requests.Session is not documented as thread-safe — its cookie jar and
+        redirect/auth state are mutated per request — so the threaded downloader
+        gives each worker its own. The main thread keeps self.session, which is
+        what every single-threaded code path uses.
+        """
+        if threading.current_thread() is threading.main_thread():
+            return self.session
+        sess = getattr(self._local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            sess.verify = self.cfg.verify_ssl
+            self._local.session = sess
+        return sess
 
     # -- auth ------------------------------------------------------------- #
 
     def login(self) -> str:
-        """Authenticate and return an access token (cached until near expiry)."""
+        """Authenticate and return an access token (cached until near expiry).
+
+        The token is shared by every thread, so refreshes are serialized: without
+        the lock, N workers hitting expiry at once would each POST a login.
+        """
         now = time.time()
         if self._access_token and now < self._token_expires_at - 60:
             return self._access_token
 
-        url = f"{self.cfg.base_url}/api/host/login.json"
-        resp = self.session.post(
-            url,
-            data={"user": self.cfg.username, "pass": self.cfg.password},
-            timeout=self.cfg.timeout,
-        )
-        if resp.status_code != 200:
-            sys.exit(
-                f"Login failed ({resp.status_code}) at {url}\n"
-                f"Response: {resp.text[:500]}"
-            )
-        try:
-            payload = resp.json()
-        except ValueError:
-            sys.exit(f"Login response was not JSON. Check base_url. Body:\n{resp.text[:500]}")
+        with self._token_lock:
+            # Re-check under the lock — another thread may have just refreshed.
+            now = time.time()
+            if self._access_token and now < self._token_expires_at - 60:
+                return self._access_token
 
-        token = payload.get("access_token")
-        if not token:
-            # Older ZM (<1.34) used cookie auth; not supported here.
-            sys.exit(
-                "Login succeeded but no 'access_token' was returned. "
-                "This tool requires ZoneMinder 1.34+ token auth.\n"
-                f"Payload keys: {list(payload.keys())}"
+            url = f"{self.cfg.base_url}/api/host/login.json"
+            resp = self._session().post(
+                url,
+                data={"user": self.cfg.username, "pass": self.cfg.password},
+                timeout=self.cfg.timeout,
             )
-        self._access_token = token
-        # access_token_expires is seconds-from-now (commonly 7200).
-        expires_in = float(payload.get("access_token_expires", 3600))
-        self._token_expires_at = now + expires_in
-        return token
+            if resp.status_code != 200:
+                sys.exit(
+                    f"Login failed ({resp.status_code}) at {url}\n"
+                    f"Response: {resp.text[:500]}"
+                )
+            try:
+                payload = resp.json()
+            except ValueError:
+                sys.exit(f"Login response was not JSON. Check base_url. Body:\n{resp.text[:500]}")
+
+            token = payload.get("access_token")
+            if not token:
+                # Older ZM (<1.34) used cookie auth; not supported here.
+                sys.exit(
+                    "Login succeeded but no 'access_token' was returned. "
+                    "This tool requires ZoneMinder 1.34+ token auth.\n"
+                    f"Payload keys: {list(payload.keys())}"
+                )
+            self._access_token = token
+            # access_token_expires is seconds-from-now (commonly 7200).
+            expires_in = float(payload.get("access_token_expires", 3600))
+            self._token_expires_at = now + expires_in
+            return token
 
     # -- low-level GET ---------------------------------------------------- #
 
@@ -147,7 +180,7 @@ class ZMClient:
         token = self.login()
         sep = "&" if "?" in path else "?"
         url = f"{self.cfg.base_url}{path}{sep}token={token}"
-        resp = self.session.get(url, timeout=self.cfg.timeout)
+        resp = self._session().get(url, timeout=self.cfg.timeout)
         if resp.status_code != 200:
             sys.exit(f"API GET failed ({resp.status_code}): {url}\n{resp.text[:500]}")
         return resp.json()
@@ -211,10 +244,18 @@ class ZMClient:
     # -- frames (images) -------------------------------------------------- #
 
     def frame_cache_path(self, event_id: int, frame_id: int) -> str | None:
-        """Path this frame would occupy in the on-disk cache (None if disabled)."""
+        """Path this frame would occupy in the on-disk cache (None if disabled).
+
+        Scaled frames get a '@<scale>' suffix so that images fetched at
+        different --scale values never collide in one cache (a 50%-scale JPEG
+        served up to a full-scale scan would silently break ROI coordinates).
+        Full-scale frames keep the plain name, so caches predating --scale
+        remain valid.
+        """
         if not self.cache_dir:
             return None
-        return os.path.join(self.cache_dir, str(event_id), f"{frame_id}.jpg")
+        name = f"{frame_id}.jpg" if self.scale == 100 else f"{frame_id}@{self.scale}.jpg"
+        return os.path.join(self.cache_dir, str(event_id), name)
 
     def fetch_frame(self, event_id: int, frame_id: int) -> Image.Image:
         """Return a single JPEG frame, reading the on-disk cache first.
@@ -239,18 +280,29 @@ class ZMClient:
             f"{self.cfg.base_url}/cgi-bin/zms"
             f"?mode=single&source=event&event={event_id}&frame={frame_id}&token={token}"
         )
-        resp = self.session.get(url, timeout=self.cfg.timeout)
+        if self.scale != 100:
+            url += f"&scale={self.scale}"
+        resp = self._session().get(url, timeout=self.cfg.timeout)
         if resp.status_code != 200 or not resp.content:
             raise RuntimeError(
                 f"Failed to fetch frame {frame_id} of event {event_id} "
                 f"(HTTP {resp.status_code}, {len(resp.content)} bytes)"
+            )
+        if not resp.content.startswith(b"\xff\xd8"):
+            # zms occasionally answers 200 with an HTML error page rather than a
+            # JPEG; caching that would poison every later run for this frame.
+            raise RuntimeError(
+                f"Frame {frame_id} of event {event_id} was not a JPEG "
+                f"({len(resp.content)} bytes)"
             )
 
         if cache_path:
             # Write atomically so an interrupted write never leaves a partial
             # JPEG that a later run would treat as a valid cached frame.
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            tmp = f"{cache_path}.tmp"
+            # Thread id in the temp name so two workers racing on the same frame
+            # cannot write each other's partial file before the rename.
+            tmp = f"{cache_path}.{threading.get_ident()}.tmp"
             with open(tmp, "wb") as fh:
                 fh.write(resp.content)
             os.replace(tmp, cache_path)
@@ -486,7 +538,10 @@ def analyze_event(
 def make_client(args: argparse.Namespace) -> ZMClient:
     """Build a ZMClient, letting a --cache-dir flag override the config value."""
     cfg = Config.load(args.config)
-    return ZMClient(cfg, cache_dir=getattr(args, "cache_dir", None))
+    scale = int(getattr(args, "scale", 100) or 100)
+    if not 1 <= scale <= 400:
+        sys.exit("--scale must be between 1 and 400 (percent); anything over 100 upscales.")
+    return ZMClient(cfg, cache_dir=getattr(args, "cache_dir", None), scale=scale)
 
 
 def cmd_test_connection(args: argparse.Namespace) -> int:
@@ -640,62 +695,192 @@ def cmd_download(args: argparse.Namespace) -> int:
         print("No events matched.")
         return 0
 
+    workers = max(1, args.workers)
+
     # Plan the work so we can show meaningful progress.
     plan: list[tuple[int, list[int]]] = []
-    for ev in events:
-        eid = int(ev["Id"])
-        total = int(ev.get("Frames") or 0)
-        # We don't need the (extra) per-frame API call here; frame_type 'alarm'
-        # is rarely used with download, but support it by reading records then.
-        if args.frame_type == "alarm":
+    if args.frame_type == "alarm":
+        # 'alarm' needs one extra API round trip per event to read the frame
+        # records; fetch those concurrently too, since it is pure latency.
+        def _alarm_ids(ev: dict[str, Any]) -> tuple[int, list[int]]:
+            eid = int(ev["Id"])
+            total = int(ev.get("Frames") or 0)
             recs = client.get_event(eid).get("Frame") or []
-            ids = select_frame_ids(total, recs, "alarm", args.sample_every)
-        else:
-            ids = select_frame_ids(total, [], "all", args.sample_every)
-        plan.append((eid, ids))
+            return eid, select_frame_ids(total, recs, "alarm", args.sample_every)
 
-    total_planned = sum(len(ids) for _, ids in plan)
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            plan = list(ex.map(_alarm_ids, events))
+    else:
+        for ev in events:
+            eid = int(ev["Id"])
+            total = int(ev.get("Frames") or 0)
+            plan.append((eid, select_frame_ids(total, [], "all", args.sample_every)))
+
+    # Drop events with no frames to fetch; the per-event progress below walks
+    # `plan` in step with the task stream and an empty entry would desync it.
+    empty = [eid for eid, ids in plan if not ids]
+    plan = [(eid, ids) for eid, ids in plan if ids]
+    if empty:
+        print(f"Skipping {len(empty)} event(s) with no frames: {empty[:10]}"
+              f"{' ...' if len(empty) > 10 else ''}")
+
+    tasks: list[tuple[int, int]] = [(eid, fid) for eid, ids in plan for fid in ids]
+    total_planned = len(tasks)
+    scale_note = f", scale={client.scale}%" if client.scale != 100 else ""
     print(
         f"Downloading frames for {len(events)} event(s) into {client.cache_dir}\n"
         f"  frame_type={args.frame_type}, sample_every={args.sample_every}, "
-        f"~{total_planned} frames planned\n"
+        f"workers={workers}{scale_note}, ~{total_planned} frames planned\n"
     )
+    if not tasks:
+        print("Nothing to download.")
+        return 0
+
+    def download_one(task: tuple[int, int]) -> str:
+        eid, fid = task
+        path = client.frame_cache_path(eid, fid)
+        if path and os.path.exists(path):
+            return "cached"
+        try:
+            client.fetch_frame(eid, fid)  # downloads and writes to cache
+            return "downloaded"
+        except RuntimeError:
+            return "error"
+        except requests.RequestException:
+            # Connection reset / timeout against a busy zms — one frame's
+            # failure shouldn't tear down the whole run.
+            return "error"
 
     downloaded = cached = errors = 0
     done = 0
-    for i, (eid, ids) in enumerate(plan, 1):
-        ev_dl = ev_cached = ev_err = 0
-        for fid in ids:
+    ev_index = 0
+    ev_dl = ev_cached = ev_err = 0
+    ev_seen = 0
+
+    # ThreadPoolExecutor.map yields results in submission order, so tasks stay
+    # grouped by event and the per-event summaries below remain accurate and
+    # in order regardless of how many workers ran them.
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for (eid, _fid), status in zip(tasks, ex.map(download_one, tasks)):
             done += 1
-            path = client.frame_cache_path(eid, fid)
-            if path and os.path.exists(path):
-                cached += 1
-                ev_cached += 1
-                continue
-            try:
-                client.fetch_frame(eid, fid)  # downloads and writes to cache
+            ev_seen += 1
+            if status == "downloaded":
                 downloaded += 1
                 ev_dl += 1
-            except RuntimeError:
+            elif status == "cached":
+                cached += 1
+                ev_cached += 1
+            else:
                 errors += 1
                 ev_err += 1
+
+            if ev_seen == len(plan[ev_index][1]):
+                print(
+                    f"[{ev_index + 1}/{len(plan)}] event {eid}: "
+                    f"downloaded {ev_dl}, already-cached {ev_cached}, errors {ev_err} "
+                    f"({ev_seen} frames)",
+                    flush=True,
+                )
+                ev_index += 1
+                ev_dl = ev_cached = ev_err = ev_seen = 0
+
             if done % 200 == 0:
                 print(
                     f"  ... {done}/{total_planned} frames "
                     f"(downloaded={downloaded}, cached={cached}, errors={errors})",
                     flush=True,
                 )
-        print(
-            f"[{i}/{len(plan)}] event {eid}: "
-            f"downloaded {ev_dl}, already-cached {ev_cached}, errors {ev_err} "
-            f"({len(ids)} frames)",
-            flush=True,
-        )
 
     print(
         f"\nDone. downloaded={downloaded}, already-cached={cached}, errors={errors} "
         f"of {total_planned} planned frames.\nCache: {client.cache_dir}"
     )
+    return 0
+
+
+def cmd_matches(args: argparse.Namespace) -> int:
+    """Symlink each flagged event's peak frame into one directory for review.
+
+    `scan --json-out` gives you numbers; this turns them back into pictures. The
+    link names lead with the zero-padded peak percentage, so any image browser
+    (geeqie, gthumb, nautilus) sorting by filename shows you the strongest
+    candidates first — far faster than opening events one at a time in the ZM UI.
+    """
+    client = make_client(args)
+    if not client.cache_dir:
+        sys.exit(
+            "matches needs a cache directory to link into: pass --cache-dir or set "
+            "cache_dir in the config. Peak frames missing from the cache are fetched "
+            "into it (one frame per event) unless --no-fetch is given."
+        )
+
+    if not os.path.exists(args.results):
+        sys.exit(f"Results file not found: {args.results} (create it with 'scan --json-out')")
+    with open(args.results) as fh:
+        results = json.load(fh)
+    if not isinstance(results, list):
+        sys.exit(f"{args.results} is not a scan results list (expected a JSON array).")
+
+    rows = [
+        r for r in results
+        if not r.get("error")
+        and r.get("peak_frame_id") is not None
+        and float(r.get("max_changed_fraction") or 0.0) >= args.min_fraction
+    ]
+    rows.sort(key=lambda r: float(r["max_changed_fraction"]), reverse=True)
+    if args.top is not None:
+        rows = rows[: args.top]
+
+    if not rows:
+        print(
+            f"No events in {args.results} reached {args.min_fraction * 100:.2f}%. "
+            "Lower --min-fraction to widen the net."
+        )
+        return 0
+
+    os.makedirs(args.out, exist_ok=True)
+    if args.clear:
+        # Only ever unlink symlinks — never a real file that happens to live here.
+        removed = 0
+        for name in os.listdir(args.out):
+            path = os.path.join(args.out, name)
+            if os.path.islink(path):
+                os.unlink(path)
+                removed += 1
+        if removed:
+            print(f"Cleared {removed} existing symlink(s) from {args.out}/")
+
+    linked = fetched = missing = 0
+    for r in rows:
+        eid = int(r["event_id"])
+        fid = int(r["peak_frame_id"])
+        pct = float(r["max_changed_fraction"]) * 100.0
+
+        path = client.frame_cache_path(eid, fid)
+        if not os.path.exists(path):
+            if args.no_fetch:
+                missing += 1
+                continue
+            try:
+                client.fetch_frame(eid, fid)  # writes into the cache
+                fetched += 1
+            except (RuntimeError, requests.RequestException) as exc:
+                print(f"  event {eid} frame {fid}: {exc}")
+                missing += 1
+                continue
+
+        # Pad the percentage so a lexical filename sort matches score order.
+        link = os.path.join(args.out, f"{pct:06.2f}pct_eid{eid:08d}_f{fid:06d}.jpg")
+        if os.path.islink(link) or os.path.exists(link):
+            os.unlink(link)
+        os.symlink(os.path.abspath(path), link)
+        linked += 1
+
+    print(
+        f"\nLinked {linked} frame(s) into {args.out}/ "
+        f"(fetched {fetched} not already cached, {missing} unavailable)."
+    )
+    print(f"Browse them sorted by name — highest ROI change first: {os.path.abspath(args.out)}")
     return 0
 
 
@@ -718,6 +903,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for the on-disk frame cache (overrides 'cache_dir' in the "
              "config). Frames are stored as <cache-dir>/<event_id>/<frame_id>.jpg and "
              "reused on later runs, so scans/downloads resume without re-downloading.",
+    )
+    p.add_argument(
+        "--scale", type=int, default=100, metavar="PCT",
+        help="Percent scale zms renders frames at (default 100 = source resolution). "
+             "50 quarters the bytes and speeds downloads up substantially, but ROI "
+             "coordinates are in SCALED pixels — use the same --scale for save-frame, "
+             "download, and scan. Scaled frames are cached separately from full-size ones.",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -807,7 +999,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Download only every Nth frame (default 1 = all). Use the same value you "
              "will pass to 'scan', or the default so any scan sampling hits the cache.",
     )
+    sp.add_argument(
+        "--workers", type=int, default=4,
+        help="Parallel frame downloads (default 4). Each concurrent request spawns a "
+             "zms process on the ZoneMinder server, so raising this trades server load "
+             "for wall-clock time; 8 is reasonable on a healthy box, 1 disables threading.",
+    )
     sp.set_defaults(func=cmd_download)
+
+    # matches
+    sp = sub.add_parser(
+        "matches",
+        help="Symlink the peak frame of each flagged event into one directory for review.",
+    )
+    sp.add_argument(
+        "--results", default="results.json",
+        help="Scan results JSON written by 'scan --json-out' (default results.json)",
+    )
+    sp.add_argument(
+        "--min-fraction", type=float, default=0.02,
+        help="Only link events whose peak ROI change was at least this fraction "
+             "(default 0.02 = 2%%). Re-filter without re-scanning.",
+    )
+    sp.add_argument("--top", type=int, help="Link at most N events (highest peak first)")
+    sp.add_argument(
+        "-o", "--out", default="matches",
+        help="Directory to create the symlinks in (default matches/)",
+    )
+    sp.add_argument(
+        "--clear", action="store_true",
+        help="Remove existing symlinks from the output directory first (never real files)",
+    )
+    sp.add_argument(
+        "--no-fetch", action="store_true",
+        help="Don't download peak frames missing from the cache; skip them instead",
+    )
+    sp.set_defaults(func=cmd_matches)
 
     return p
 
