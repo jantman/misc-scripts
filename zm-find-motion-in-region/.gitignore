@@ -1,5 +1,9 @@
-# Local secrets — never commit your real config
+# Local secrets — never commit your real config. The glob covers per-site
+# variants (dm_zm_config.json, home_zm_config.json, ...); the .example file is
+# deliberately not matched and stays tracked.
 zm_config.json
+*zm_config.json
+!zm_config.example.json
 
 # Scratch images / output
 *.jpg
