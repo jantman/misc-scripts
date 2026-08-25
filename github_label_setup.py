@@ -28,6 +28,9 @@ The latest version of this script can be found at:
 CHANGELOG
 ----------
 
+2026-08-25 Jason Antman <jason@jasonantman.com>:
+  - add "robot-army" and "robot-army-independent" labels
+
 2018-12-02 Jason Antman <jason@jasonantman.com>:
   - Fix bug in handling of Archived repositories.
 
@@ -77,6 +80,8 @@ LABELS['unreleased fix'] = '0052cc'
 LABELS['Waiting For Response'] = 'fef2c0'
 LABELS['unsupported-repo'] = 'b60205'
 LABELS['stale'] = 'f9d0c4'
+LABELS['robot-army'] = '5319e7'
+LABELS['robot-army-independent'] = 'a371f7'
 #####################
 # end configuration #
 #####################
