@@ -486,6 +486,23 @@ class GcrImage(Image):
         pass
 
 
+def parse_image_ref(ref: str) -> Tuple[str, str]:
+    """Split a docker image reference into (name, tag).
+
+    Handles references with no tag (implicitly ``latest``), digest pins
+    (``name@sha256:...``), and registry hosts with a port (the colon in
+    ``host:5000/repo`` is part of the name, not a tag).
+    """
+    name, sep, digest = ref.partition('@')
+    if sep:
+        return name, digest
+    name, sep, tag = ref.rpartition(':')
+    if not sep or '/' in tag:
+        # no colon at all, or the colon was a registry port
+        return ref, 'latest'
+    return name, tag
+
+
 def get_image(name: str) -> Image:
     orig_name = name
     cls = DockerHubImage
@@ -1093,7 +1110,7 @@ class GlpiDockerReport:
                 continue
             name: str
             tag: str
-            name, tag = vm['comment'].split(':')
+            name, tag = parse_image_ref(vm['comment'])
             img: Image = self._get_image(name)
             ver: ImageVersion = img.version(tag)
             comp.add_vm(vm['name'], ver)
