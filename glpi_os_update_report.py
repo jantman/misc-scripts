@@ -165,8 +165,10 @@ class OperatingSystem:
         'amazon linux': 'amazon-linux',
         'opensuse leap': 'opensuse',
         'opensuse': 'opensuse',
-        'raspberry pi os': 'raspberry-pi-os',
-        'raspbian': 'raspbian',
+        # endoflife.date has no Raspberry Pi OS product; it follows Debian's
+        # release cycles (12 = bookworm, 13 = trixie).
+        'raspberry pi os': 'debian',
+        'raspbian': 'debian',
         'linux mint': 'linuxmint',
     }
 
